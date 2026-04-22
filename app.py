@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -461,17 +461,22 @@ def compute_screener_logic(df: pd.DataFrame, base_score: int, details: dict) -> 
 @st.cache_data(ttl=60, show_spinner=False)
 def build_top_screener(tickers: list[str]) -> pd.DataFrame:
     rows = []
-    for ticker in tickers:
+    scan_list = tickers[:150]
+    for ticker in scan_list:
         try:
             df = load_stock_data(ticker, period="1y", interval="1d")
             if df.empty or len(df) < 80:
                 continue
+            last_val = pd.to_numeric(df["Close"].iloc[-1], errors="coerce")
+            prev_val = pd.to_numeric(df["Close"].iloc[-2], errors="coerce")
+            if pd.isna(last_val) or pd.isna(prev_val):
+                continue
+            last = float(last_val)
+            prev = float(prev_val)
             meta = load_fast_info(ticker)
             score, details = score_stock(df)
             if not details:
                 continue
-            last = float(df["Close"].iloc[-1])
-            prev = float(df["Close"].iloc[-2])
             change = last - prev
             pct = (change / prev * 100) if prev else 0.0
             extra = compute_screener_logic(df, score, details)
@@ -484,8 +489,8 @@ def build_top_screener(tickers: list[str]) -> pd.DataFrame:
                 "Pct": pct,
                 "Score": score,
                 "ScoreLabel": details["label"],
-                "Volume": float(df["Volume"].iloc[-1]),
-                "ValueTraded": float(last * df["Volume"].iloc[-1]),
+                "Volume": float(pd.to_numeric(df["Volume"].iloc[-1], errors="coerce") or 0),
+                "ValueTraded": float(last * float(pd.to_numeric(df["Volume"].iloc[-1], errors="coerce") or 0)),
                 "MarketCap": meta.get("market_cap", np.nan),
                 "RSI": details["rsi"],
                 "RVOL": details["rvol"],
@@ -511,15 +516,7 @@ def build_top_screener(tickers: list[str]) -> pd.DataFrame:
 def mini_line(series: pd.Series, color: str, height: int = 85) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines", line=dict(color=color, width=2)))
-    fig.update_layout(
-        height=height,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        showlegend=False,
-    )
+    fig.update_layout(height=height, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis=dict(visible=False), yaxis=dict(visible=False), showlegend=False)
     return fig
 
 
@@ -590,30 +587,11 @@ def render_sidebar(screener: pd.DataFrame):
             prev = float(ihsg["Close"].iloc[-2])
             pct = (last - prev) / prev * 100 if prev else 0
             cls = "up" if pct >= 0 else "down"
-            st.markdown(
-                f'<div class="panel"><div class="metric-title">Market IHSG</div><div class="metric-value">{fmt_num(last, 2)}</div><div class="{cls}">{pct:+.2f}%</div></div>',
-                unsafe_allow_html=True,
-            )
-
+            st.markdown(f'<div class="panel"><div class="metric-title">Market IHSG</div><div class="metric-value">{fmt_num(last, 2)}</div><div class="{cls}">{pct:+.2f}%</div></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
-
-        menu_options = [
-            "Dashboard",
-            "Watchlist > 50",
-            "BSJP Screener",
-            "Swing Trade Screener",
-            "Day Trade Screener",
-            "Bandarmology Screener",
-            "ARA Screener",
-        ]
-        active_menu = st.radio(
-            "Menu",
-            menu_options,
-            index=menu_options.index(st.session_state.get("active_menu", "Dashboard")),
-            key="sidebar_menu_radio",
-        )
+        menu_options = ["Dashboard", "Watchlist > 50", "BSJP Screener", "Swing Trade Screener", "Day Trade Screener", "Bandarmology Screener", "ARA Screener"]
+        active_menu = st.radio("Menu", menu_options, index=menu_options.index(st.session_state.get("active_menu", "Dashboard")), key="sidebar_menu_radio")
         st.session_state["active_menu"] = active_menu
-
         st.markdown("---")
         st.caption("Watchlist score > 50")
         wl = screener[screener["Score"] > 50][["Ticker", "Score"]].sort_values("Score", ascending=False)
@@ -645,66 +623,35 @@ def render_top_market_bar():
 def render_ticker_search_combined(screener: pd.DataFrame):
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.subheader("SEARCH EMITEN")
-
     master_options = build_master_search_options()
     current = st.session_state.get("selected_ticker", "BBCA")
-
     default_idx = 0
     matched_idx = master_options.index[master_options["Ticker"] == current].tolist()
     if matched_idx:
         default_idx = matched_idx[0]
-
-    selected_label = st.selectbox(
-        "Cari dari semua ticker IDX",
-        master_options["Label"].tolist(),
-        index=default_idx if default_idx < len(master_options) else 0,
-    )
-
+    selected_label = st.selectbox("Cari dari semua ticker IDX", master_options["Label"].tolist(), index=default_idx if default_idx < len(master_options) else 0)
     c1, c2 = st.columns([3, 1.1])
     with c1:
-        manual = st.text_input(
-            "Atau ketik ticker / nama emiten",
-            value=current,
-            placeholder="Contoh: BBCA, BMRI, TLKM, PGEO, Bank Mandiri, Telkom",
-        )
+        manual = st.text_input("Atau ketik ticker / nama emiten", value=current, placeholder="Contoh: BBCA, BMRI, TLKM, PGEO, Bank Mandiri, Telkom")
     with c2:
         open_btn = st.button("Open Ticker", use_container_width=True)
-
     selected_from_box = master_options.loc[master_options["Label"] == selected_label, "Ticker"].iloc[0]
     if selected_from_box != current:
         st.session_state["selected_ticker"] = selected_from_box
         st.rerun()
-
     if open_btn:
         typed = manual.strip().upper().replace(".JK", "")
-        alias_map = {
-            "MANDIRI": "BMRI",
-            "BANK MANDIRI": "BMRI",
-            "BCA": "BBCA",
-            "BANK CENTRAL ASIA": "BBCA",
-            "BRI": "BBRI",
-            "BANK RAKYAT INDONESIA": "BBRI",
-            "BNI": "BBNI",
-            "BANK NEGARA INDONESIA": "BBNI",
-            "TELKOM": "TLKM",
-            "TELKOM INDONESIA": "TLKM",
-            "ASTRA": "ASII",
-            "GOTO": "GOTO",
-        }
+        alias_map = {"MANDIRI": "BMRI", "BANK MANDIRI": "BMRI", "BCA": "BBCA", "BANK CENTRAL ASIA": "BBCA", "BRI": "BBRI", "BANK RAKYAT INDONESIA": "BBRI", "BNI": "BBNI", "BANK NEGARA INDONESIA": "BBNI", "TELKOM": "TLKM", "TELKOM INDONESIA": "TLKM", "ASTRA": "ASII", "GOTO": "GOTO"}
         if typed in alias_map:
             typed = alias_map[typed]
         if typed in ALL_IDX_TICKERS:
             st.session_state["selected_ticker"] = typed
             st.rerun()
-        name_match = master_options[
-            master_options["Ticker"].str.upper().str.contains(typed, na=False)
-            | master_options["Name"].str.upper().str.contains(typed, na=False)
-        ]
+        name_match = master_options[master_options["Ticker"].str.upper().str.contains(typed, na=False) | master_options["Name"].str.upper().str.contains(typed, na=False)]
         if not name_match.empty:
             st.session_state["selected_ticker"] = name_match.iloc[0]["Ticker"]
             st.rerun()
         st.warning(f"Ticker / nama emiten '{manual}' tidak ditemukan di master IDX.")
-
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -730,22 +677,16 @@ def render_top_cards(top_df: pd.DataFrame):
                 st.markdown(f'<div class="score-box"><div class="score-num">{int(row["Score"])} </div><div class="score-label">{row["ScoreLabel"]}</div></div>', unsafe_allow_html=True)
             cls = "up" if row["Pct"] >= 0 else "down"
             st.markdown(f'<div class="metric-value">{fmt_num(row["Price"],0)}</div><div class="{cls}">{row["Change"]:+.0f} ({row["Pct"]:+.2f}%)</div>', unsafe_allow_html=True)
-            st.markdown(f'''
-                <div class="kpi-grid">
-                    <div class="kpi-cell"><div class="metric-title">Sektor</div><div>{row['Sector']}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">MCap</div><div>{fmt_short(row['MarketCap'])}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">Volume</div><div>{fmt_short(row['Volume'])}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">Value</div><div>{fmt_short(row['ValueTraded'])}</div></div>
-                </div>
-            ''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="kpi-grid"><div class="kpi-cell"><div class="metric-title">Sektor</div><div>{row['Sector']}</div></div><div class="kpi-cell"><div class="metric-title">MCap</div><div>{fmt_short(row['MarketCap'])}</div></div><div class="kpi-cell"><div class="metric-title">Volume</div><div>{fmt_short(row['Volume'])}</div></div><div class="kpi-cell"><div class="metric-title">Value</div><div>{fmt_short(row['ValueTraded'])}</div></div></div>''', unsafe_allow_html=True)
             df = load_stock_data(row["Ticker"], period="6mo", interval="1d")
-            st.caption(f'RSI {row["RSI"]:.2f}')
-            st.plotly_chart(mini_line(calculate_rsi(df).tail(60), "#9b6dff"), use_container_width=True, config={"displayModeBar": False})
-            macd, _, _ = calculate_macd(df)
-            st.caption(f'MACD {macd.iloc[-1]:.2f}')
-            st.plotly_chart(mini_line(macd.tail(60), "#4ea1ff"), use_container_width=True, config={"displayModeBar": False})
-            st.caption(f'Akumulasi / Distribusi {row["AccStatus"]}')
-            st.plotly_chart(mini_line(calculate_ad_line(df).tail(60), "#4ade80"), use_container_width=True, config={"displayModeBar": False})
+            if not df.empty:
+                st.caption(f'RSI {row["RSI"]:.2f}')
+                st.plotly_chart(mini_line(calculate_rsi(df).tail(60), "#9b6dff"), use_container_width=True, config={"displayModeBar": False})
+                macd, _, _ = calculate_macd(df)
+                st.caption(f'MACD {macd.iloc[-1]:.2f}')
+                st.plotly_chart(mini_line(macd.tail(60), "#4ea1ff"), use_container_width=True, config={"displayModeBar": False})
+                st.caption(f'Akumulasi / Distribusi {row["AccStatus"]}')
+                st.plotly_chart(mini_line(calculate_ad_line(df).tail(60), "#4ade80"), use_container_width=True, config={"displayModeBar": False})
             if st.button(f'Detail {row["Ticker"]}', key=f'detail_{row["Ticker"]}'):
                 st.session_state["selected_ticker"] = row["Ticker"]
                 st.rerun()
@@ -775,14 +716,17 @@ def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: 
 def render_bsjp_main_table(screener: pd.DataFrame):
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle-main">Klik baris atau ticker untuk membuka detail saham</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="subtitle-main">Klik baris untuk membuka detail saham</div>', unsafe_allow_html=True)
     if screener.empty:
         st.warning("Data BSJP screener tidak tersedia.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
     df = screener.copy().sort_values("BSJP Score", ascending=False).reset_index(drop=True)
+    numeric_cols = ["Price", "Pct", "RSI", "RVOL", "ValueTraded", "BSJP Score"]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=["Price"])
 
     def aksi_label(score):
         return "SIAP BELI" if score >= 85 else "AT ENTRY" if score >= 75 else "WATCH"
@@ -804,94 +748,71 @@ def render_bsjp_main_table(screener: pd.DataFrame):
 
     table_df = pd.DataFrame({
         "EMITEN": df["Ticker"],
-        "GAIN": df["Pct"].map(lambda x: round(x, 1)),
-        "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1),
-        "AKSI": df["BSJP Score"].apply(aksi_label),
-        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
-        "RVOL": (df["RVOL"] * 100).round(1),
-        "ENTRY": (df["Price"] * 0.98).round(0).astype(int),
-        "NOW": df["Price"].round(0).astype(int),
-        "TP": (df["Price"] * 1.05).round(0).astype(int),
-        "SL": (df["Price"] * 0.97).round(0).astype(int),
-        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1),
-        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1),
-        "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
-        "RSI 5M": df["RSI"].round(1),
-        "VAL": df["ValueTraded"].apply(fmt_short),
-        "FASE": df["AccStatus"].apply(fase_label),
-        "TREND": df["Trend"].apply(trend_label),
-        "BSJP SCORE": df["BSJP Score"],
+        "GAIN": df["Pct"].fillna(0).round(1),
+        "WICK": np.minimum(np.maximum((100 - df["RSI"].fillna(50)).abs(), 5), 100).round(1),
+        "AKSI": df["BSJP Score"].fillna(0).apply(aksi_label),
+        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"].fillna("Neutral"), df["BSJP Score"].fillna(0))],
+        "RVOL": (df["RVOL"].fillna(0) * 100).round(1),
+        "ENTRY": (df["Price"] * 0.98).round(0).fillna(0).astype(int),
+        "NOW": df["Price"].round(0).fillna(0).astype(int),
+        "TP": (df["Price"] * 1.05).round(0).fillna(0).astype(int),
+        "SL": (df["Price"] * 0.97).round(0).fillna(0).astype(int),
+        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
+        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
+        "RSI SIG": np.where(df["RSI"].fillna(50) >= 50, "UP", "DOWN"),
+        "RSI 5M": df["RSI"].fillna(50).round(1),
+        "VAL": df["ValueTraded"].fillna(0).apply(fmt_short),
+        "FASE": df["AccStatus"].fillna("Neutral").apply(fase_label),
+        "TREND": df["Trend"].fillna("NETRAL").apply(trend_label),
+        "BSJP SCORE": df["BSJP Score"].fillna(0).astype(int),
     })
 
     gb = GridOptionsBuilder.from_dataframe(table_df)
-    gb.configure_default_column(
-        sortable=True,
-        filter=True,
-        resizable=True,
-        suppressMenu=False,
-        wrapText=False,
-        autoHeight=False,
-    )
+    gb.configure_default_column(sortable=True, filter=True, resizable=True)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
     gb.configure_grid_options(rowHeight=36, headerHeight=40, animateRows=False)
 
-    # Column widths
-    gb.configure_column("EMITEN", pinned="left", width=95)
-    gb.configure_column("GAIN", width=80, type=["numericColumn"])
-    gb.configure_column("WICK", width=80, type=["numericColumn"])
-    gb.configure_column("AKSI", width=120)
-    gb.configure_column("SINYAL", width=120)
-    gb.configure_column("RVOL", width=90, type=["numericColumn"])
-    gb.configure_column("ENTRY", width=90, type=["numericColumn"])
-    gb.configure_column("NOW", width=90, type=["numericColumn"])
-    gb.configure_column("TP", width=90, type=["numericColumn"])
-    gb.configure_column("SL", width=90, type=["numericColumn"])
-    gb.configure_column("PROFIT", width=95, type=["numericColumn"])
-    gb.configure_column("%TO TP", width=95, type=["numericColumn"])
-    gb.configure_column("RSI SIG", width=90)
-    gb.configure_column("RSI 5M", width=90, type=["numericColumn"])
-    gb.configure_column("VAL", width=110)
-    gb.configure_column("FASE", width=110)
-    gb.configure_column("TREND", width=95)
-    gb.configure_column("BSJP SCORE", width=110, type=["numericColumn"])
+    widths = {
+        "EMITEN": 95, "GAIN": 80, "WICK": 80, "AKSI": 120, "SINYAL": 120, "RVOL": 90,
+        "ENTRY": 90, "NOW": 90, "TP": 90, "SL": 90, "PROFIT": 95, "%TO TP": 95,
+        "RSI SIG": 90, "RSI 5M": 90, "VAL": 110, "FASE": 110, "TREND": 95, "BSJP SCORE": 110,
+    }
+    for col, width in widths.items():
+        gb.configure_column(col, width=width, pinned="left" if col == "EMITEN" else None)
 
-    # Styling with JS
-    gain_jscode = """
+    gain_jscode = JsCode("""
     function(params) {
-        if (params.value > 0) {
-            return {backgroundColor: '#16a34a', color: 'white', fontWeight: '700', textAlign: 'center'};
-        } else if (params.value < 0) {
-            return {backgroundColor: '#dc2626', color: 'white', fontWeight: '700', textAlign: 'center'};
-        }
+        if (params.value > 0) return {backgroundColor: '#16a34a', color: 'white', fontWeight: '700', textAlign: 'center'};
+        if (params.value < 0) return {backgroundColor: '#dc2626', color: 'white', fontWeight: '700', textAlign: 'center'};
         return {backgroundColor: '#475569', color: 'white', fontWeight: '700', textAlign: 'center'};
     }
-    """
-    action_jscode = """
+    """)
+    action_jscode = JsCode("""
     function(params) {
         const colors = {'SIAP BELI':'#7c3aed','AT ENTRY':'#2563eb','WATCH':'#ea580c'};
         return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
     }
-    """
-    signal_jscode = """
+    """)
+    signal_jscode = JsCode("""
     function(params) {
         const colors = {'SUPER':'#7e22ce','AKUM':'#16a34a','ON TRACK':'#15803d','WAIT':'#475569'};
         return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
     }
-    """
-    price_jscode = """
+    """)
+    price_jscode = JsCode("""
     function(params) {
         return {backgroundColor: '#e5e7eb', color: '#111827', fontWeight: '700', textAlign: 'center'};
     }
-    """
-    updown_jscode = """
+    """)
+    updown_jscode = JsCode("""
     function(params) {
         const isUp = params.value === 'UP' || params.value === 'AKUM' || params.value === 'BULL';
         const isDown = params.value === 'DOWN' || params.value === 'DISTRIBUSI' || params.value === 'BEAR';
         return {backgroundColor: isUp ? '#16a34a' : isDown ? '#dc2626' : '#64748b', color: 'white', fontWeight: '700', textAlign: 'center'};
     }
-    """
-    rsi_jscode = """
+    """)
+    rsi_jscode = JsCode("""
     function(params) {
         const v = Number(params.value);
         let bg = '#64748b';
@@ -901,21 +822,20 @@ def render_bsjp_main_table(screener: pd.DataFrame):
         else bg = '#dc2626';
         return {backgroundColor: bg, color: 'white', fontWeight: '700', textAlign: 'center'};
     }
-    """
+    """)
 
     for col in ["GAIN", "PROFIT", "%TO TP"]:
-        gb.configure_column(col, cellStyle=go.JsCode(gain_jscode))
-    gb.configure_column("AKSI", cellStyle=go.JsCode(action_jscode))
-    gb.configure_column("SINYAL", cellStyle=go.JsCode(signal_jscode))
-    gb.configure_column("RSI SIG", cellStyle=go.JsCode(updown_jscode))
-    gb.configure_column("FASE", cellStyle=go.JsCode(updown_jscode))
-    gb.configure_column("TREND", cellStyle=go.JsCode(updown_jscode))
-    gb.configure_column("RSI 5M", cellStyle=go.JsCode(rsi_jscode))
+        gb.configure_column(col, cellStyle=gain_jscode)
+    gb.configure_column("AKSI", cellStyle=action_jscode)
+    gb.configure_column("SINYAL", cellStyle=signal_jscode)
+    gb.configure_column("RSI SIG", cellStyle=updown_jscode)
+    gb.configure_column("FASE", cellStyle=updown_jscode)
+    gb.configure_column("TREND", cellStyle=updown_jscode)
+    gb.configure_column("RSI 5M", cellStyle=rsi_jscode)
     for col in ["ENTRY", "NOW", "TP", "SL"]:
-        gb.configure_column(col, cellStyle=go.JsCode(price_jscode))
+        gb.configure_column(col, cellStyle=price_jscode)
 
     grid_options = gb.build()
-
     custom_css = {
         ".ag-theme-streamlit": {
             "--ag-background-color": "#031225",
@@ -933,25 +853,14 @@ def render_bsjp_main_table(screener: pd.DataFrame):
         ".ag-cell": {"display": "flex", "align-items": "center", "justify-content": "center"},
     }
 
-    response = AgGrid(
-        table_df,
-        gridOptions=grid_options,
-        height=720,
-        fit_columns_on_grid_load=False,
-        theme="streamlit",
-        update_on=["selectionChanged"],
-        allow_unsafe_jscode=True,
-        custom_css=custom_css,
-    )
-
+    response = AgGrid(table_df, gridOptions=grid_options, height=720, fit_columns_on_grid_load=False, theme="streamlit", update_on=["selectionChanged"], allow_unsafe_jscode=True, custom_css=custom_css)
     selected_rows = response.get("selected_rows", [])
     if selected_rows is not None and len(selected_rows) > 0:
-        first = selected_rows[0]
-        ticker = first.get("EMITEN") if isinstance(first, dict) else None
+        row0 = selected_rows[0]
+        ticker = row0.get("EMITEN") if isinstance(row0, dict) else None
         if ticker and ticker != st.session_state.get("selected_ticker"):
             st.session_state["selected_ticker"] = ticker
             st.rerun()
-
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -964,8 +873,8 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
         st.error(f"Data {selected_ticker} tidak tersedia.")
         return
 
-    row = screener[screener["Ticker"] == selected_ticker]
-    if row.empty:
+    row_df = screener[screener["Ticker"] == selected_ticker]
+    if row_df.empty:
         base_df = load_stock_data(selected_ticker, period="1y", interval="1d")
         if base_df.empty:
             st.error(f"Ticker {selected_ticker} tidak ditemukan atau data tidak tersedia.")
@@ -982,9 +891,10 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
             "AccStatus": details.get("accumulation", "Neutral"),
             "Trend": details.get("trend", "Downtrend"),
         }
+        shown_score = score
     else:
-        row = row.iloc[0]
-        score = int(row["Score"])
+        row = row_df.iloc[0]
+        shown_score = int(row["Score"])
         extra = {
             "BSJP Score": int(row["BSJP Score"]),
             "Swing Score": int(row["Swing Score"]),
@@ -1014,14 +924,10 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
         status_cls = "status-open" if market_open_now() else "status-closed"
         status_text = "MARKET OPEN" if market_open_now() else "MARKET CLOSED"
         st.markdown(f'<span class="{status_cls}">{status_text}</span>', unsafe_allow_html=True)
-        shown_score = row["Score"] if not isinstance(row, pd.DataFrame) else score
         st.markdown(f'<div class="small-note">Main Score</div><div class="score-num" style="font-size:1.5rem">{int(shown_score)}</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="small-note">Signal</div><span class="{chip_class(extra["SignalRec"])}">{extra["SignalRec"]}</span>', unsafe_allow_html=True)
     with h3:
-        sc_df = pd.DataFrame({
-            "Screener": ["BSJP", "Swing", "Day Trade", "Bandarmology", "ARA"],
-            "Point": [extra["BSJP Score"], extra["Swing Score"], extra["Day Score"], extra["Bandar Score"], extra["ARA Score"]],
-        })
+        sc_df = pd.DataFrame({"Screener": ["BSJP", "Swing", "Day Trade", "Bandarmology", "ARA"], "Point": [extra["BSJP Score"], extra["Swing Score"], extra["Day Score"], extra["Bandar Score"], extra["ARA Score"]]})
         st.dataframe(sc_df, use_container_width=True, hide_index=True)
     st.plotly_chart(price_chart(df, selected_ticker), use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1043,25 +949,19 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.subheader("VOLUME")
         st.plotly_chart(volume_chart(df), use_container_width=True, config={"displayModeBar": False})
-        vol_df = pd.DataFrame({
-            "Metric": ["Daily Volume", "Vol MA20", "RVOL", "Value Traded"],
-            "Value": [fmt_short(df["Volume"].iloc[-1]), fmt_short(df["Volume"].rolling(20).mean().iloc[-1]), f'{calculate_rvol(df).iloc[-1]:.2f}', fmt_short(last * df["Volume"].iloc[-1])],
-        })
+        vol_df = pd.DataFrame({"Metric": ["Daily Volume", "Vol MA20", "RVOL", "Value Traded"], "Value": [fmt_short(df["Volume"].iloc[-1]), fmt_short(df["Volume"].rolling(20).mean().iloc[-1]), f'{calculate_rvol(df).iloc[-1]:.2f}', fmt_short(last * df["Volume"].iloc[-1])]})
         st.dataframe(vol_df, use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
     with d:
         st.markdown('<div class="panel">', unsafe_allow_html=True)
         st.subheader("ACCUMULATION / DISTRIBUTION")
         st.plotly_chart(ad_chart(df), use_container_width=True, config={"displayModeBar": False})
-        acc_df = pd.DataFrame({
-            "Metric": ["CMF", "OBV Trend", "Status"],
-            "Value": [f'{calculate_cmf(df).iloc[-1]:.2f}', 'Up' if calculate_obv(df).iloc[-1] > calculate_obv(df).iloc[-5] else 'Down', detect_accumulation(df)],
-        })
+        acc_df = pd.DataFrame({"Metric": ["CMF", "OBV Trend", "Status"], "Value": [f'{calculate_cmf(df).iloc[-1]:.2f}', 'Up' if calculate_obv(df).iloc[-1] > calculate_obv(df).iloc[-5] else 'Down', detect_accumulation(df)]})
         st.dataframe(acc_df, use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 
-def ensure_state(screener: pd.DataFrame):
+def ensure_state(_screener: pd.DataFrame):
     if "selected_ticker" not in st.session_state:
         st.session_state["selected_ticker"] = "BBCA"
 
@@ -1144,10 +1044,7 @@ def main():
     st.markdown("<br>", unsafe_allow_html=True)
     status = "MARKET OPEN" if market_open_now() else "MARKET CLOSED"
     cls = "status-open" if market_open_now() else "status-closed"
-    st.markdown(
-        f'<div class="panel"><span class="{cls}">{status}</span> <span class="small-note">&nbsp;&nbsp;Sidebar menampilkan IHSG dan watchlist score > 50 | Search membaca master ticker IDX</span></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="panel"><span class="{cls}">{status}</span> <span class="small-note">&nbsp;&nbsp;Sidebar menampilkan IHSG dan watchlist score > 50 | Search membaca master ticker IDX | BSJP pakai AG Grid</span></div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
