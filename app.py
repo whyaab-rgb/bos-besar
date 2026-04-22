@@ -711,6 +711,8 @@ def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: 
             with cols[2]:
                 st.markdown(f'<span class="{chip_class(row["SignalRec"])}">{row["SignalRec"]}</span>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+    st.write("DEBUG screener rows:", len(screener))
+    st.write(screener.head())
 
 
 def render_bsjp_main_table(screener: pd.DataFrame):
