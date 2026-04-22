@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -774,14 +775,14 @@ def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: 
 def render_bsjp_main_table(screener: pd.DataFrame):
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle-main">Klik ticker untuk membuka detail saham</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle-main">Klik baris atau ticker untuk membuka detail saham</div>', unsafe_allow_html=True)
 
     if screener.empty:
         st.warning("Data BSJP screener tidak tersedia.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
 
-    df = screener.copy()
+    df = screener.copy().sort_values("BSJP Score", ascending=False).reset_index(drop=True)
 
     def aksi_label(score):
         return "SIAP BELI" if score >= 85 else "AT ENTRY" if score >= 75 else "WATCH"
@@ -801,51 +802,160 @@ def render_bsjp_main_table(screener: pd.DataFrame):
     def trend_label(trend):
         return "BULL" if trend == "Uptrend" else "BEAR" if trend == "Downtrend" else "NETRAL"
 
-    out = pd.DataFrame({
+    table_df = pd.DataFrame({
         "EMITEN": df["Ticker"],
-        "GAIN": df["Pct"].round(1).astype(str) + "%",
-        "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1).astype(str) + "%",
+        "GAIN": df["Pct"].map(lambda x: round(x, 1)),
+        "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1),
         "AKSI": df["BSJP Score"].apply(aksi_label),
         "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
-        "RVOL": (df["RVOL"] * 100).round(1).astype(str) + "%",
-        "ENTRY": (df["Price"] * 0.98).round(0),
-        "NOW": df["Price"].round(0),
-        "TP": (df["Price"] * 1.05).round(0),
-        "SL": (df["Price"] * 0.97).round(0),
-        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1).astype(str) + "%",
-        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1).astype(str) + "%",
+        "RVOL": (df["RVOL"] * 100).round(1),
+        "ENTRY": (df["Price"] * 0.98).round(0).astype(int),
+        "NOW": df["Price"].round(0).astype(int),
+        "TP": (df["Price"] * 1.05).round(0).astype(int),
+        "SL": (df["Price"] * 0.97).round(0).astype(int),
+        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1),
+        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1),
         "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
         "RSI 5M": df["RSI"].round(1),
         "VAL": df["ValueTraded"].apply(fmt_short),
         "FASE": df["AccStatus"].apply(fase_label),
         "TREND": df["Trend"].apply(trend_label),
-        "BSJP_SCORE": df["BSJP Score"],
-    }).sort_values("BSJP_SCORE", ascending=False).reset_index(drop=True)
+        "BSJP SCORE": df["BSJP Score"],
+    })
 
-    headers = ["EMITEN","GAIN","WICK","AKSI","SINYAL","RVOL","ENTRY","NOW","TP","SL","PROFIT","%TO TP","RSI SIG","RSI 5M","VAL","FASE","TREND"]
-    widths = [1.2,1,1,1.4,1.4,1,1,1,1,1,1.2,1.1,1.2,1,1,1.4,1.2]
+    gb = GridOptionsBuilder.from_dataframe(table_df)
+    gb.configure_default_column(
+        sortable=True,
+        filter=True,
+        resizable=True,
+        suppressMenu=False,
+        wrapText=False,
+        autoHeight=False,
+    )
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+    gb.configure_grid_options(rowHeight=36, headerHeight=40, animateRows=False)
 
-    header_cols = st.columns(widths)
-    for col, h in zip(header_cols, headers):
-        with col:
-            st.markdown(f"**{h}**")
+    # Column widths
+    gb.configure_column("EMITEN", pinned="left", width=95)
+    gb.configure_column("GAIN", width=80, type=["numericColumn"])
+    gb.configure_column("WICK", width=80, type=["numericColumn"])
+    gb.configure_column("AKSI", width=120)
+    gb.configure_column("SINYAL", width=120)
+    gb.configure_column("RVOL", width=90, type=["numericColumn"])
+    gb.configure_column("ENTRY", width=90, type=["numericColumn"])
+    gb.configure_column("NOW", width=90, type=["numericColumn"])
+    gb.configure_column("TP", width=90, type=["numericColumn"])
+    gb.configure_column("SL", width=90, type=["numericColumn"])
+    gb.configure_column("PROFIT", width=95, type=["numericColumn"])
+    gb.configure_column("%TO TP", width=95, type=["numericColumn"])
+    gb.configure_column("RSI SIG", width=90)
+    gb.configure_column("RSI 5M", width=90, type=["numericColumn"])
+    gb.configure_column("VAL", width=110)
+    gb.configure_column("FASE", width=110)
+    gb.configure_column("TREND", width=95)
+    gb.configure_column("BSJP SCORE", width=110, type=["numericColumn"])
 
-    for _, row in out.head(25).iterrows():
-        cols = st.columns(widths)
-        values = [row[h] for h in headers]
-        for i, (col, val) in enumerate(zip(cols, values)):
-            with col:
-                if i == 0:
-                    if st.button(str(val), key=f'bsjp_main_{row["EMITEN"]}'):
-                        st.session_state["selected_ticker"] = row["EMITEN"]
-                        st.rerun()
-                else:
-                    st.write(val)
+    # Styling with JS
+    gain_jscode = """
+    function(params) {
+        if (params.value > 0) {
+            return {backgroundColor: '#16a34a', color: 'white', fontWeight: '700', textAlign: 'center'};
+        } else if (params.value < 0) {
+            return {backgroundColor: '#dc2626', color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        return {backgroundColor: '#475569', color: 'white', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+    action_jscode = """
+    function(params) {
+        const colors = {'SIAP BELI':'#7c3aed','AT ENTRY':'#2563eb','WATCH':'#ea580c'};
+        return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+    signal_jscode = """
+    function(params) {
+        const colors = {'SUPER':'#7e22ce','AKUM':'#16a34a','ON TRACK':'#15803d','WAIT':'#475569'};
+        return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+    price_jscode = """
+    function(params) {
+        return {backgroundColor: '#e5e7eb', color: '#111827', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+    updown_jscode = """
+    function(params) {
+        const isUp = params.value === 'UP' || params.value === 'AKUM' || params.value === 'BULL';
+        const isDown = params.value === 'DOWN' || params.value === 'DISTRIBUSI' || params.value === 'BEAR';
+        return {backgroundColor: isUp ? '#16a34a' : isDown ? '#dc2626' : '#64748b', color: 'white', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+    rsi_jscode = """
+    function(params) {
+        const v = Number(params.value);
+        let bg = '#64748b';
+        if (v >= 60) bg = '#16a34a';
+        else if (v >= 50) bg = '#2563eb';
+        else if (v >= 30) bg = '#7c3aed';
+        else bg = '#dc2626';
+        return {backgroundColor: bg, color: 'white', fontWeight: '700', textAlign: 'center'};
+    }
+    """
+
+    for col in ["GAIN", "PROFIT", "%TO TP"]:
+        gb.configure_column(col, cellStyle=go.JsCode(gain_jscode))
+    gb.configure_column("AKSI", cellStyle=go.JsCode(action_jscode))
+    gb.configure_column("SINYAL", cellStyle=go.JsCode(signal_jscode))
+    gb.configure_column("RSI SIG", cellStyle=go.JsCode(updown_jscode))
+    gb.configure_column("FASE", cellStyle=go.JsCode(updown_jscode))
+    gb.configure_column("TREND", cellStyle=go.JsCode(updown_jscode))
+    gb.configure_column("RSI 5M", cellStyle=go.JsCode(rsi_jscode))
+    for col in ["ENTRY", "NOW", "TP", "SL"]:
+        gb.configure_column(col, cellStyle=go.JsCode(price_jscode))
+
+    grid_options = gb.build()
+
+    custom_css = {
+        ".ag-theme-streamlit": {
+            "--ag-background-color": "#031225",
+            "--ag-foreground-color": "#ffffff",
+            "--ag-header-background-color": "#123b73",
+            "--ag-header-foreground-color": "#ffffff",
+            "--ag-odd-row-background-color": "#031225",
+            "--ag-row-hover-color": "rgba(59,130,246,0.16)",
+            "--ag-selected-row-background-color": "rgba(37,99,235,0.28)",
+            "--ag-border-color": "#0f2d52",
+            "--ag-secondary-border-color": "#0f2d52",
+            "--ag-font-size": "13px",
+        },
+        ".ag-header-cell-label": {"justify-content": "center", "font-weight": "700"},
+        ".ag-cell": {"display": "flex", "align-items": "center", "justify-content": "center"},
+    }
+
+    response = AgGrid(
+        table_df,
+        gridOptions=grid_options,
+        height=720,
+        fit_columns_on_grid_load=False,
+        theme="streamlit",
+        update_on=["selectionChanged"],
+        allow_unsafe_jscode=True,
+        custom_css=custom_css,
+    )
+
+    selected_rows = response.get("selected_rows", [])
+    if selected_rows is not None and len(selected_rows) > 0:
+        first = selected_rows[0]
+        ticker = first.get("EMITEN") if isinstance(first, dict) else None
+        if ticker and ticker != st.session_state.get("selected_ticker"):
+            st.session_state["selected_ticker"] = ticker
+            st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
+def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):selected_ticker: str, screener: pd.DataFrame):
     tf_map = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "6M": ("6mo", "1d"), "1Y": ("1y", "1d"), "3Y": ("3y", "1wk")}
     timeframe = st.radio("Timeframe", list(tf_map.keys()), horizontal=True, index=2)
     period, interval = tf_map[timeframe]
