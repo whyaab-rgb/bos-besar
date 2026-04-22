@@ -880,6 +880,122 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
         st.markdown('</div>', unsafe_allow_html=True)
 
 
+def render_bsjs_main_table(screener: pd.DataFrame):
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle-main">Klik ticker untuk membuka detail saham</div>', unsafe_allow_html=True)
+
+    df = screener.copy()
+
+    if df.empty:
+        st.warning("Data BSJP screener tidak tersedia.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    # mapping signal / aksi
+    def aksi_label(score):
+        if score >= 85:
+            return "SIAP BELI"
+        elif score >= 75:
+            return "AT ENTRY"
+        else:
+            return "WATCH"
+
+    def sinyal_label(acc, score):
+        if acc == "Accumulation" and score >= 80:
+            return "SUPER"
+        elif acc == "Accumulation":
+            return "AKUM"
+        elif score >= 70:
+            return "ON TRACK"
+        return "WAIT"
+
+    def fase_label(acc):
+        if acc == "Accumulation":
+            return "AKUM"
+        elif acc == "Distribution":
+            return "DISTRIBUSI"
+        return "NETRAL"
+
+    def trend_label(trend):
+        if trend == "Uptrend":
+            return "BULL"
+        elif trend == "Downtrend":
+            return "BEAR"
+        return "NETRAL"
+
+    out = pd.DataFrame({
+        "EMITEN": df["Ticker"],
+        "GAIN": df["Pct"].round(1).astype(str) + "%",
+        "WICK": (np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100)).round(1).astype(str) + "%",
+        "AKSI": df["BSJP Score"].apply(aksi_label),
+        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
+        "RVOL": (df["RVOL"] * 100).round(1).astype(str) + "%",
+        "ENTRY": (df["Price"] * 0.98).round(0),
+        "NOW": df["Price"].round(0),
+        "TP": (df["Price"] * 1.05).round(0),
+        "SL": (df["Price"] * 0.97).round(0),
+        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1).astype(str) + "%",
+        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"]) * 100).round(1).astype(str) + "%",
+        "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
+        "RSI 5M": df["RSI"].round(1),
+        "VAL": df["ValueTraded"].apply(fmt_short),
+        "FASE": df["AccStatus"].apply(fase_label),
+        "TREND": df["Trend"].apply(trend_label),
+        "BSJP_SCORE": df["BSJP Score"],
+    })
+
+    out = out.sort_values("BSJP_SCORE", ascending=False).reset_index(drop=True)
+
+    # klik ticker dengan tombol
+    header_cols = st.columns([1.2, 1, 1, 1.4, 1.4, 1, 1, 1, 1, 1, 1.2, 1.1, 1.2, 1, 1, 1.4, 1.2])
+    headers = ["EMITEN","GAIN","WICK","AKSI","SINYAL","RVOL","ENTRY","NOW","TP","SL","PROFIT","%TO TP","RSI SIG","RSI 5M","VAL","FASE","TREND"]
+    for c, h in zip(header_cols, headers):
+        with c:
+            st.markdown(f"**{h}**")
+
+    for i, row in out.head(25).iterrows():
+        cols = st.columns([1.2, 1, 1, 1.4, 1.4, 1, 1, 1, 1, 1, 1.2, 1.1, 1.2, 1, 1, 1.4, 1.2])
+
+        with cols[0]:
+            if st.button(row["EMITEN"], key=f"bsjp_main_{row['EMITEN']}"):
+                st.session_state["selected_ticker"] = row["EMITEN"]
+                st.rerun()
+        with cols[1]:
+            st.write(row["GAIN"])
+        with cols[2]:
+            st.write(row["WICK"])
+        with cols[3]:
+            st.write(row["AKSI"])
+        with cols[4]:
+            st.write(row["SINYAL"])
+        with cols[5]:
+            st.write(row["RVOL"])
+        with cols[6]:
+            st.write(row["ENTRY"])
+        with cols[7]:
+            st.write(row["NOW"])
+        with cols[8]:
+            st.write(row["TP"])
+        with cols[9]:
+            st.write(row["SL"])
+        with cols[10]:
+            st.write(row["PROFIT"])
+        with cols[11]:
+            st.write(row["%TO TP"])
+        with cols[12]:
+            st.write(row["RSI SIG"])
+        with cols[13]:
+            st.write(row["RSI 5M"])
+        with cols[14]:
+            st.write(row["VAL"])
+        with cols[15]:
+            st.write(row["FASE"])
+        with cols[16]:
+            st.write(row["TREND"])
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 def ensure_state(screener: pd.DataFrame):
     if "selected_ticker" not in st.session_state:
         st.session_state["selected_ticker"] = "BBCA"
@@ -910,7 +1026,40 @@ def main():
     left, right = st.columns([4.9, 1.7], gap="large")
 
     with left:
+    active_menu = st.session_state.get("active_menu", "Dashboard")
+
+    if active_menu == "Dashboard":
         render_top_cards(screener)
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "BSJP Screener":
+        render_bsjs_main_table(screener)
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "Swing Trade Screener":
+        render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing_main")
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "Day Trade Screener":
+        render_rank_table("Day Trade Screener", screener, "Day Score", "day_main")
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "Bandarmology Screener":
+        render_rank_table("Bandarmology Screener", screener, "Bandar Score", "bandar_main")
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "ARA Screener":
+        render_rank_table("ARA Screener", screener, "ARA Score", "ara_main")
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_stock_detail(st.session_state["selected_ticker"], screener)
+
+    elif active_menu == "Watchlist > 50":
+        render_rank_table("Watchlist Score > 50", screener[screener["Score"] > 50], "Score", "watch_main")
         st.markdown("<br>", unsafe_allow_html=True)
         render_stock_detail(st.session_state["selected_ticker"], screener)
 
