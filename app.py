@@ -753,10 +753,27 @@ def ensure_state(screener: pd.DataFrame):
     if not screener.empty and st.session_state["selected_ticker"] not in screener["Ticker"].tolist():
         st.session_state["selected_ticker"] = screener.iloc[0]["Ticker"]
 
+def ensure_menu_state():
+    if "active_menu" not in st.session_state:
+        st.session_state["active_menu"] = "Dashboard"
 
 # =========================
 # MAIN
 # =========================
+ensure_menu_state()
+def main():
+    if st_autorefresh is not None:
+        st_autorefresh(interval=60_000, key="auto")
+
+    with st.spinner("Memuat screener IDX..."):
+        screener = build_top_screener(IDX_TICKERS)
+
+    ensure_state(screener)
+    ensure_menu_state()
+
+    render_sidebar(screener)
+    render_top_market_bar()
+    st.markdown("<br>", unsafe_allow_html=True)
 def main():
     if st_autorefresh is not None:
         st_autorefresh(interval=60_000, key="auto")
@@ -765,7 +782,56 @@ def main():
         screener = build_top_screener(IDX_TICKERS)
     ensure_state(screener)
 
-    render_sidebar(screener)
+def render_sidebar(screener: pd.DataFrame):
+    with st.sidebar:
+        st.markdown("## STREAMLIS PRO")
+
+        ihsg = load_index_data(MARKET_SYMBOLS["IHSG"])
+        if not ihsg.empty and len(ihsg) >= 2:
+            last = float(ihsg["Close"].iloc[-1])
+            prev = float(ihsg["Close"].iloc[-2])
+            pct = (last - prev) / prev * 100 if prev else 0
+            cls = "up" if pct >= 0 else "down"
+            st.markdown(
+                f'''
+                <div class="panel">
+                    <div class="metric-title">Market IHSG</div>
+                    <div class="metric-value">{fmt_num(last, 2)}</div>
+                    <div class="{cls}">{pct:+.2f}%</div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        menu_options = [
+            "Dashboard",
+            "Watchlist > 50",
+            "BSJP Screener",
+            "Swing Trade Screener",
+            "Day Trade Screener",
+            "Bandarmology Screener",
+            "ARA Screener",
+        ]
+
+        active_menu = st.radio(
+            "Menu",
+            menu_options,
+            index=menu_options.index(st.session_state.get("active_menu", "Dashboard")),
+            key="sidebar_menu_radio",
+        )
+
+        st.session_state["active_menu"] = active_menu
+
+        st.markdown("---")
+        st.caption("Watchlist score > 50")
+
+        wl = screener[screener["Score"] > 50][["Ticker", "Score"]].sort_values("Score", ascending=False)
+        for _, row in wl.head(18).iterrows():
+            if st.button(f'{row["Ticker"]}  |  {int(row["Score"])}', key=f'sb_{row["Ticker"]}'):
+                st.session_state["selected_ticker"] = row["Ticker"]
+                st.rerun()
     render_top_market_bar()
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -775,16 +841,34 @@ def main():
         st.markdown("<br>", unsafe_allow_html=True)
         render_stock_detail(st.session_state["selected_ticker"], screener)
     with right:
-        render_ticker_search_combined(screener)
-        st.markdown("<br>", unsafe_allow_html=True)
+    render_ticker_search_combined(screener)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    active_menu = st.session_state.get("active_menu", "Dashboard")
+
+    if active_menu == "Dashboard":
         render_rank_table("BSJP Screener", screener, "BSJP Score", "bsjp")
         st.markdown("<br>", unsafe_allow_html=True)
         render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing")
         st.markdown("<br>", unsafe_allow_html=True)
         render_rank_table("Day Trade Screener", screener, "Day Score", "day")
-        st.markdown("<br>", unsafe_allow_html=True)
+
+    elif active_menu == "Watchlist > 50":
+        render_rank_table("Watchlist Score > 50", screener[screener["Score"] > 50], "Score", "watch50")
+
+    elif active_menu == "BSJP Screener":
+        render_rank_table("BSJP Screener", screener, "BSJP Score", "bsjp")
+
+    elif active_menu == "Swing Trade Screener":
+        render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing")
+
+    elif active_menu == "Day Trade Screener":
+        render_rank_table("Day Trade Screener", screener, "Day Score", "day")
+
+    elif active_menu == "Bandarmology Screener":
         render_rank_table("Bandarmology Screener", screener, "Bandar Score", "bandar")
-        st.markdown("<br>", unsafe_allow_html=True)
+
+    elif active_menu == "ARA Screener":
         render_rank_table("ARA Screener", screener, "ARA Score", "ara")
 
     st.markdown("<br>", unsafe_allow_html=True)
