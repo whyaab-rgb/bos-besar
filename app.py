@@ -461,25 +461,43 @@ def compute_screener_logic(df: pd.DataFrame, base_score: int, details: dict) -> 
 @st.cache_data(ttl=60, show_spinner=False)
 def build_top_screener(tickers: list[str]) -> pd.DataFrame:
     rows = []
-    scan_list = tickers[:150]
+
+    # pakai list kecil dulu biar stabil
+    priority_tickers = [
+        "BBCA", "BMRI", "BBRI", "TLKM", "ASII",
+        "ADRO", "ANTM", "MDKA", "PGAS", "UNTR",
+        "CPIN", "ICBP", "INDF", "KLBF", "SMGR",
+        "TOWR", "BRIS", "ITMG", "MEDC", "PGEO"
+    ]
+
+    scan_list = [t for t in priority_tickers if t in tickers]
+
     for ticker in scan_list:
         try:
             df = load_stock_data(ticker, period="1y", interval="1d")
             if df.empty or len(df) < 80:
                 continue
+
             last_val = pd.to_numeric(df["Close"].iloc[-1], errors="coerce")
             prev_val = pd.to_numeric(df["Close"].iloc[-2], errors="coerce")
+            vol_val = pd.to_numeric(df["Volume"].iloc[-1], errors="coerce")
+
             if pd.isna(last_val) or pd.isna(prev_val):
                 continue
+
             last = float(last_val)
             prev = float(prev_val)
+            vol = float(vol_val) if not pd.isna(vol_val) else 0.0
+
             meta = load_fast_info(ticker)
             score, details = score_stock(df)
             if not details:
                 continue
+
             change = last - prev
             pct = (change / prev * 100) if prev else 0.0
             extra = compute_screener_logic(df, score, details)
+
             rows.append({
                 "Ticker": ticker,
                 "Name": meta.get("name", ticker),
@@ -489,8 +507,8 @@ def build_top_screener(tickers: list[str]) -> pd.DataFrame:
                 "Pct": pct,
                 "Score": score,
                 "ScoreLabel": details["label"],
-                "Volume": float(pd.to_numeric(df["Volume"].iloc[-1], errors="coerce") or 0),
-                "ValueTraded": float(last * float(pd.to_numeric(df["Volume"].iloc[-1], errors="coerce") or 0)),
+                "Volume": vol,
+                "ValueTraded": last * vol,
                 "MarketCap": meta.get("market_cap", np.nan),
                 "RSI": details["rsi"],
                 "RVOL": details["rvol"],
@@ -502,9 +520,39 @@ def build_top_screener(tickers: list[str]) -> pd.DataFrame:
             })
         except Exception:
             continue
+
     out = pd.DataFrame(rows)
+
     if out.empty:
-        return out
+        # fallback minimal supaya app tidak kosong
+        fallback = pd.DataFrame([
+            {
+                "Ticker": "BBCA",
+                "Name": "Bank Central Asia Tbk.",
+                "Sector": "Perbankan",
+                "Price": 0.0,
+                "Change": 0.0,
+                "Pct": 0.0,
+                "Score": 0,
+                "ScoreLabel": "No Data",
+                "Volume": 0.0,
+                "ValueTraded": 0.0,
+                "MarketCap": np.nan,
+                "RSI": 50.0,
+                "RVOL": 1.0,
+                "CMF": 0.0,
+                "Trend": "NETRAL",
+                "AccStatus": "Neutral",
+                "SignalRec": "WAIT",
+                "BSJP Score": 0,
+                "Swing Score": 0,
+                "Day Score": 0,
+                "Bandar Score": 0,
+                "ARA Score": 0,
+            }
+        ])
+        return fallback
+
     out = out.sort_values(["Score", "Pct"], ascending=[False, False]).reset_index(drop=True)
     out["Rank"] = np.arange(1, len(out) + 1)
     return out
@@ -719,16 +767,27 @@ def render_bsjp_main_table(screener: pd.DataFrame):
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle-main">Klik baris untuk membuka detail saham</div>', unsafe_allow_html=True)
+
     if screener.empty:
-        st.warning("Data BSJP screener tidak tersedia.")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.error("SCREENER KOSONG - data gagal dimuat")
+        st.markdown("</div>", unsafe_allow_html=True)
         return
 
     df = screener.copy().sort_values("BSJP Score", ascending=False).reset_index(drop=True)
+
     numeric_cols = ["Price", "Pct", "RSI", "RVOL", "ValueTraded", "BSJP Score"]
     for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna(subset=["Price"])
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["Price"] = df["Price"].fillna(0)
+    df["Pct"] = df["Pct"].fillna(0)
+    df["RSI"] = df["RSI"].fillna(50)
+    df["RVOL"] = df["RVOL"].fillna(1.0)
+    df["ValueTraded"] = df["ValueTraded"].fillna(0)
+    df["BSJP Score"] = df["BSJP Score"].fillna(0)
+    df["AccStatus"] = df["AccStatus"].fillna("Neutral")
+    df["Trend"] = df["Trend"].fillna("NETRAL")
 
     def aksi_label(score):
         return "SIAP BELI" if score >= 85 else "AT ENTRY" if score >= 75 else "WATCH"
@@ -750,121 +809,152 @@ def render_bsjp_main_table(screener: pd.DataFrame):
 
     table_df = pd.DataFrame({
         "EMITEN": df["Ticker"],
-        "GAIN": df["Pct"].fillna(0).round(1),
-        "WICK": np.minimum(np.maximum((100 - df["RSI"].fillna(50)).abs(), 5), 100).round(1),
-        "AKSI": df["BSJP Score"].fillna(0).apply(aksi_label),
-        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"].fillna("Neutral"), df["BSJP Score"].fillna(0))],
-        "RVOL": (df["RVOL"].fillna(0) * 100).round(1),
+        "GAIN": df["Pct"].round(1),
+        "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1),
+        "AKSI": df["BSJP Score"].apply(aksi_label),
+        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
+        "RVOL": (df["RVOL"] * 100).round(1),
         "ENTRY": (df["Price"] * 0.98).round(0).fillna(0).astype(int),
         "NOW": df["Price"].round(0).fillna(0).astype(int),
         "TP": (df["Price"] * 1.05).round(0).fillna(0).astype(int),
         "SL": (df["Price"] * 0.97).round(0).fillna(0).astype(int),
         "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
         "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
-        "RSI SIG": np.where(df["RSI"].fillna(50) >= 50, "UP", "DOWN"),
-        "RSI 5M": df["RSI"].fillna(50).round(1),
-        "VAL": df["ValueTraded"].fillna(0).apply(fmt_short),
-        "FASE": df["AccStatus"].fillna("Neutral").apply(fase_label),
-        "TREND": df["Trend"].fillna("NETRAL").apply(trend_label),
-        "BSJP SCORE": df["BSJP Score"].fillna(0).astype(int),
+        "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
+        "RSI 5M": df["RSI"].round(1),
+        "VAL": df["ValueTraded"].apply(fmt_short),
+        "FASE": df["AccStatus"].apply(fase_label),
+        "TREND": df["Trend"].apply(trend_label),
+        "BSJP SCORE": df["BSJP Score"].astype(int),
     })
 
-    gb = GridOptionsBuilder.from_dataframe(table_df)
-    gb.configure_default_column(sortable=True, filter=True, resizable=True)
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
-    gb.configure_grid_options(rowHeight=36, headerHeight=40, animateRows=False)
+    if table_df.empty:
+        st.error("TABLE DF KOSONG")
+        st.write(df.head())
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
 
-    widths = {
-        "EMITEN": 95, "GAIN": 80, "WICK": 80, "AKSI": 120, "SINYAL": 120, "RVOL": 90,
-        "ENTRY": 90, "NOW": 90, "TP": 90, "SL": 90, "PROFIT": 95, "%TO TP": 95,
-        "RSI SIG": 90, "RSI 5M": 90, "VAL": 110, "FASE": 110, "TREND": 95, "BSJP SCORE": 110,
-    }
-    for col, width in widths.items():
-        gb.configure_column(col, width=width, pinned="left" if col == "EMITEN" else None)
+    st.caption(f"Jumlah data BSJP: {len(table_df)}")
 
-    gain_jscode = JsCode("""
-    function(params) {
-        if (params.value > 0) return {backgroundColor: '#16a34a', color: 'white', fontWeight: '700', textAlign: 'center'};
-        if (params.value < 0) return {backgroundColor: '#dc2626', color: 'white', fontWeight: '700', textAlign: 'center'};
-        return {backgroundColor: '#475569', color: 'white', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
-    action_jscode = JsCode("""
-    function(params) {
-        const colors = {'SIAP BELI':'#7c3aed','AT ENTRY':'#2563eb','WATCH':'#ea580c'};
-        return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
-    signal_jscode = JsCode("""
-    function(params) {
-        const colors = {'SUPER':'#7e22ce','AKUM':'#16a34a','ON TRACK':'#15803d','WAIT':'#475569'};
-        return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
-    price_jscode = JsCode("""
-    function(params) {
-        return {backgroundColor: '#e5e7eb', color: '#111827', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
-    updown_jscode = JsCode("""
-    function(params) {
-        const isUp = params.value === 'UP' || params.value === 'AKUM' || params.value === 'BULL';
-        const isDown = params.value === 'DOWN' || params.value === 'DISTRIBUSI' || params.value === 'BEAR';
-        return {backgroundColor: isUp ? '#16a34a' : isDown ? '#dc2626' : '#64748b', color: 'white', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
-    rsi_jscode = JsCode("""
-    function(params) {
-        const v = Number(params.value);
-        let bg = '#64748b';
-        if (v >= 60) bg = '#16a34a';
-        else if (v >= 50) bg = '#2563eb';
-        else if (v >= 30) bg = '#7c3aed';
-        else bg = '#dc2626';
-        return {backgroundColor: bg, color: 'white', fontWeight: '700', textAlign: 'center'};
-    }
-    """)
+    try:
+        gb = GridOptionsBuilder.from_dataframe(table_df)
+        gb.configure_default_column(sortable=True, filter=True, resizable=True)
+        gb.configure_selection(selection_mode="single", use_checkbox=False)
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+        gb.configure_grid_options(rowHeight=36, headerHeight=40, animateRows=False)
 
-    for col in ["GAIN", "PROFIT", "%TO TP"]:
-        gb.configure_column(col, cellStyle=gain_jscode)
-    gb.configure_column("AKSI", cellStyle=action_jscode)
-    gb.configure_column("SINYAL", cellStyle=signal_jscode)
-    gb.configure_column("RSI SIG", cellStyle=updown_jscode)
-    gb.configure_column("FASE", cellStyle=updown_jscode)
-    gb.configure_column("TREND", cellStyle=updown_jscode)
-    gb.configure_column("RSI 5M", cellStyle=rsi_jscode)
-    for col in ["ENTRY", "NOW", "TP", "SL"]:
-        gb.configure_column(col, cellStyle=price_jscode)
+        widths = {
+            "EMITEN": 95, "GAIN": 80, "WICK": 80, "AKSI": 120, "SINYAL": 120,
+            "RVOL": 90, "ENTRY": 90, "NOW": 90, "TP": 90, "SL": 90,
+            "PROFIT": 95, "%TO TP": 95, "RSI SIG": 90, "RSI 5M": 90,
+            "VAL": 110, "FASE": 110, "TREND": 95, "BSJP SCORE": 110,
+        }
+        for col, width in widths.items():
+            gb.configure_column(col, width=width, pinned="left" if col == "EMITEN" else None)
 
-    grid_options = gb.build()
-    custom_css = {
-        ".ag-theme-streamlit": {
-            "--ag-background-color": "#031225",
-            "--ag-foreground-color": "#ffffff",
-            "--ag-header-background-color": "#123b73",
-            "--ag-header-foreground-color": "#ffffff",
-            "--ag-odd-row-background-color": "#031225",
-            "--ag-row-hover-color": "rgba(59,130,246,0.16)",
-            "--ag-selected-row-background-color": "rgba(37,99,235,0.28)",
-            "--ag-border-color": "#0f2d52",
-            "--ag-secondary-border-color": "#0f2d52",
-            "--ag-font-size": "13px",
-        },
-        ".ag-header-cell-label": {"justify-content": "center", "font-weight": "700"},
-        ".ag-cell": {"display": "flex", "align-items": "center", "justify-content": "center"},
-    }
+        gain_jscode = JsCode("""
+        function(params) {
+            if (params.value > 0) return {backgroundColor: '#16a34a', color: 'white', fontWeight: '700', textAlign: 'center'};
+            if (params.value < 0) return {backgroundColor: '#dc2626', color: 'white', fontWeight: '700', textAlign: 'center'};
+            return {backgroundColor: '#475569', color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
 
-    response = AgGrid(table_df, gridOptions=grid_options, height=720, fit_columns_on_grid_load=False, theme="streamlit", update_on=["selectionChanged"], allow_unsafe_jscode=True, custom_css=custom_css)
-    selected_rows = response.get("selected_rows", [])
-    if selected_rows is not None and len(selected_rows) > 0:
-        row0 = selected_rows[0]
-        ticker = row0.get("EMITEN") if isinstance(row0, dict) else None
-        if ticker and ticker != st.session_state.get("selected_ticker"):
-            st.session_state["selected_ticker"] = ticker
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+        action_jscode = JsCode("""
+        function(params) {
+            const colors = {'SIAP BELI':'#7c3aed','AT ENTRY':'#2563eb','WATCH':'#ea580c'};
+            return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
 
+        signal_jscode = JsCode("""
+        function(params) {
+            const colors = {'SUPER':'#7e22ce','AKUM':'#16a34a','ON TRACK':'#15803d','WAIT':'#475569'};
+            return {backgroundColor: colors[params.value] || '#334155', color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
+
+        price_jscode = JsCode("""
+        function(params) {
+            return {backgroundColor: '#e5e7eb', color: '#111827', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
+
+        updown_jscode = JsCode("""
+        function(params) {
+            const isUp = params.value === 'UP' || params.value === 'AKUM' || params.value === 'BULL';
+            const isDown = params.value === 'DOWN' || params.value === 'DISTRIBUSI' || params.value === 'BEAR';
+            return {backgroundColor: isUp ? '#16a34a' : isDown ? '#dc2626' : '#64748b', color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
+
+        rsi_jscode = JsCode("""
+        function(params) {
+            const v = Number(params.value);
+            let bg = '#64748b';
+            if (v >= 60) bg = '#16a34a';
+            else if (v >= 50) bg = '#2563eb';
+            else if (v >= 30) bg = '#7c3aed';
+            else bg = '#dc2626';
+            return {backgroundColor: bg, color: 'white', fontWeight: '700', textAlign: 'center'};
+        }
+        """)
+
+        for col in ["GAIN", "PROFIT", "%TO TP"]:
+            gb.configure_column(col, cellStyle=gain_jscode)
+        gb.configure_column("AKSI", cellStyle=action_jscode)
+        gb.configure_column("SINYAL", cellStyle=signal_jscode)
+        gb.configure_column("RSI SIG", cellStyle=updown_jscode)
+        gb.configure_column("FASE", cellStyle=updown_jscode)
+        gb.configure_column("TREND", cellStyle=updown_jscode)
+        gb.configure_column("RSI 5M", cellStyle=rsi_jscode)
+
+        for col in ["ENTRY", "NOW", "TP", "SL"]:
+            gb.configure_column(col, cellStyle=price_jscode)
+
+        grid_options = gb.build()
+
+        custom_css = {
+            ".ag-theme-streamlit": {
+                "--ag-background-color": "#031225",
+                "--ag-foreground-color": "#ffffff",
+                "--ag-header-background-color": "#123b73",
+                "--ag-header-foreground-color": "#ffffff",
+                "--ag-odd-row-background-color": "#031225",
+                "--ag-row-hover-color": "rgba(59,130,246,0.16)",
+                "--ag-selected-row-background-color": "rgba(37,99,235,0.28)",
+                "--ag-border-color": "#0f2d52",
+                "--ag-secondary-border-color": "#0f2d52",
+                "--ag-font-size": "13px",
+            },
+            ".ag-header-cell-label": {"justify-content": "center", "font-weight": "700"},
+            ".ag-cell": {"display": "flex", "align-items": "center", "justify-content": "center"},
+        }
+
+        response = AgGrid(
+            table_df,
+            gridOptions=grid_options,
+            height=720,
+            fit_columns_on_grid_load=False,
+            theme="streamlit",
+            update_on=["selectionChanged"],
+            allow_unsafe_jscode=True,
+            custom_css=custom_css,
+        )
+
+        selected_rows = response.get("selected_rows", [])
+        if selected_rows is not None and len(selected_rows) > 0:
+            row0 = selected_rows[0]
+            ticker = row0.get("EMITEN") if isinstance(row0, dict) else None
+            if ticker and ticker != st.session_state.get("selected_ticker"):
+                st.session_state["selected_ticker"] = ticker
+                st.rerun()
+
+    except Exception as e:
+        st.warning("AG Grid gagal dirender. Menampilkan fallback dataframe.")
+        st.dataframe(table_df, use_container_width=True, height=720)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
     tf_map = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "6M": ("6mo", "1d"), "1Y": ("1y", "1d"), "3Y": ("3y", "1wk")}
