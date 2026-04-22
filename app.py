@@ -835,12 +835,14 @@ def render_sidebar(screener: pd.DataFrame):
     render_top_market_bar()
     st.markdown("<br>", unsafe_allow_html=True)
 
-    left, right = st.columns([4.9, 1.7], gap="large")
-    with left:
-        render_top_cards(screener)
-        st.markdown("<br>", unsafe_allow_html=True)
-        render_stock_detail(st.session_state["selected_ticker"], screener)
-    with right:
+   left, right = st.columns([4.9, 1.7], gap="large")
+
+with left:
+    render_top_cards(screener)
+    st.markdown("<br>", unsafe_allow_html=True)
+    render_stock_detail(st.session_state["selected_ticker"], screener)
+
+with right:
     render_ticker_search_combined(screener)
     st.markdown("<br>", unsafe_allow_html=True)
 
