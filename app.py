@@ -745,35 +745,63 @@ def render_top_cards(top_df: pd.DataFrame):
     if top_df.empty:
         st.warning("Tidak ada data screener yang tersedia.")
         return
+
     cols = st.columns(3)
+
     for idx, (_, row) in enumerate(top_df.head(3).iterrows()):
         with cols[idx]:
             st.markdown('<div class="panel">', unsafe_allow_html=True)
+
             header_cols = st.columns([0.6, 2.7, 1.25])
+
             with header_cols[0]:
                 st.markdown(f"### {int(row['Rank'])}")
+
             with header_cols[1]:
                 if st.button(row["Ticker"], key=f"card_ticker_{row['Ticker']}"):
                     st.session_state["selected_ticker"] = row["Ticker"]
                     st.rerun()
                 st.caption(row["Name"])
+
             with header_cols[2]:
                 st.markdown(
-                    f'<div class="score-box"><div class="score-num">{int(row["Score"])}'</replacement}]}】【：】【“】【canmore.update_textdoc to=canmore.update_textdoc  微信公众号天天中彩票json սխալ again. Need careful JSON string valid. We can use replacement with escaped quotes. Let's craft correct replacement code fully in JSON. Pattern maybe easier use
+                    f"""
+                    <div class="score-box">
+                        <div class="score-num">{int(row["Score"])}</div>
+                        <div class="score-label">{row["ScoreLabel"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             color_cls = "metric-change-up" if row["Pct"] >= 0 else "metric-change-down"
             st.markdown(
-                f'<div class="metric-value">{fmt_num(row["Price"], 0)}</div><div class="{color_cls}">{row["Change"]:+.0f} ({row["Pct"]:+.2f}%)</div>',
+                f"""
+                <div class="metric-value">{fmt_num(row["Price"], 0)}</div>
+                <div class="{color_cls}">{row["Change"]:+.0f} ({row["Pct"]:+.2f}%)</div>
+                """,
                 unsafe_allow_html=True,
             )
 
             st.markdown(
                 f"""
                 <div class="kpi-grid">
-                    <div class="kpi-cell"><div class="metric-title">Sektor</div><div>{row['Sector']}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">Market Cap</div><div>{fmt_short(row['MarketCap'])}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">Volume</div><div>{fmt_short(row['Volume'])}</div></div>
-                    <div class="kpi-cell"><div class="metric-title">Value</div><div>{fmt_short(row['ValueTraded'])}</div></div>
+                    <div class="kpi-cell">
+                        <div class="metric-title">Sektor</div>
+                        <div>{row['Sector']}</div>
+                    </div>
+                    <div class="kpi-cell">
+                        <div class="metric-title">Market Cap</div>
+                        <div>{fmt_short(row['MarketCap'])}</div>
+                    </div>
+                    <div class="kpi-cell">
+                        <div class="metric-title">Volume</div>
+                        <div>{fmt_short(row['Volume'])}</div>
+                    </div>
+                    <div class="kpi-cell">
+                        <div class="metric-title">Value</div>
+                        <div>{fmt_short(row['ValueTraded'])}</div>
+                    </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -785,41 +813,80 @@ def render_top_cards(top_df: pd.DataFrame):
             ad = calculate_ad_line(small_df)
 
             st.caption(f"RSI (14)  {rsi_series.iloc[-1]:.2f}")
-            st.plotly_chart(mini_line_figure(rsi_series, "#9b6dff", 90), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(
+                mini_line_figure(rsi_series, "#9b6dff", 90),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+
             st.caption(f"MACD (12,26,9)  {macd.iloc[-1]:.2f} | Signal {signal_line.iloc[-1]:.2f}")
-            st.plotly_chart(mini_line_figure(macd.tail(60), "#4ea1ff", 90), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(
+                mini_line_figure(macd.tail(60), "#4ea1ff", 90),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+
             st.caption(f"Akumulasi / Distribusi  {row['AccStatus']}")
-            st.plotly_chart(mini_line_figure(ad.tail(60), "#4ade80", 90), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(
+                mini_line_figure(ad.tail(60), "#4ade80", 90),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
 
             cmf_value = row["CMF"]
             obv_trend = "Naik" if row["OBVUp"] else "Turun"
-            volume_trend = "Akumulasi" if row["AccStatus"] == "Accumulation" else ("Distribusi" if row["AccStatus"] == "Distribution" else "Netral")
+            volume_trend = (
+                "Akumulasi"
+                if row["AccStatus"] == "Accumulation"
+                else ("Distribusi" if row["AccStatus"] == "Distribution" else "Netral")
+            )
+
             info_df = pd.DataFrame(
                 {
-                    "Indikator": ["Chaikin Money Flow (20)", "On Balance Volume (OBV)", "Volume Trend"],
-                    "Nilai": [f"{cmf_value:.2f}", obv_trend, volume_trend],
-                    "Sinyal": [row["AccStatus"], row["AccStatus"], row["SignalRec"]],
+                    "Indikator": [
+                        "Chaikin Money Flow (20)",
+                        "On Balance Volume (OBV)",
+                        "Volume Trend",
+                    ],
+                    "Nilai": [
+                        f"{cmf_value:.2f}",
+                        obv_trend,
+                        volume_trend,
+                    ],
+                    "Sinyal": [
+                        row["AccStatus"],
+                        row["AccStatus"],
+                        row["SignalRec"],
+                    ],
                 }
             )
             st.dataframe(info_df, use_container_width=True, hide_index=True)
 
             bottom_cols = st.columns(3)
+
             with bottom_cols[0]:
                 st.caption("Trend")
                 st.write(row["Trend"])
+
             with bottom_cols[1]:
                 st.caption("Volatilitas")
                 st.write("Sedang" if abs(row["Pct"]) > 1 else "Rendah")
+
             with bottom_cols[2]:
                 label = row["SignalRec"]
-                cls = "buy-chip" if label == "BUY" else ("hold-chip" if label == "HOLD" else ("sell-chip" if label == "SELL" else "wait-chip"))
+                cls = (
+                    "buy-chip"
+                    if label == "BUY"
+                    else ("hold-chip" if label == "HOLD" else ("sell-chip" if label == "SELL" else "wait-chip"))
+                )
                 st.caption("Rekomendasi")
                 st.markdown(f'<span class="{cls}">{label}</span>', unsafe_allow_html=True)
 
             if st.button(f"Detail {row['Ticker']}", key=f"detail_{row['Ticker']}"):
                 st.session_state["selected_ticker"] = row["Ticker"]
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_watchlist(screener: pd.DataFrame):
