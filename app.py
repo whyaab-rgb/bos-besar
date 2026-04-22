@@ -531,13 +531,34 @@ def render_sidebar(screener: pd.DataFrame):
             prev = float(ihsg["Close"].iloc[-2])
             pct = (last - prev) / prev * 100 if prev else 0
             cls = "up" if pct >= 0 else "down"
-            st.markdown(f'<div class="panel"><div class="metric-title">Market IHSG</div><div class="metric-value">{fmt_num(last,2)}</div><div class="{cls}">{pct:+.2f}%</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="panel"><div class="metric-title">Market IHSG</div><div class="metric-value">{fmt_num(last, 2)}</div><div class="{cls}">{pct:+.2f}%</div></div>',
+                unsafe_allow_html=True,
+            )
+
         st.markdown("<br>", unsafe_allow_html=True)
-        menu = ["Dashboard", "Watchlist > 50", "BSJP Screener", "Swing Trade Screener", "Day Trade Screener", "Bandarmology Screener", "ARA Screener"]
-        for item in menu:
-            st.markdown(f"- {item}")
+
+        menu_options = [
+            "Dashboard",
+            "Watchlist > 50",
+            "BSJP Screener",
+            "Swing Trade Screener",
+            "Day Trade Screener",
+            "Bandarmology Screener",
+            "ARA Screener",
+        ]
+
+        active_menu = st.radio(
+            "Menu",
+            menu_options,
+            index=menu_options.index(st.session_state.get("active_menu", "Dashboard")),
+            key="sidebar_menu_radio",
+        )
+        st.session_state["active_menu"] = active_menu
+
         st.markdown("---")
         st.caption("Watchlist score > 50")
+
         wl = screener[screener["Score"] > 50][["Ticker", "Score"]].sort_values("Score", ascending=False)
         for _, row in wl.head(18).iterrows():
             if st.button(f'{row["Ticker"]}  |  {int(row["Score"])}', key=f'sb_{row["Ticker"]}'):
