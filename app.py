@@ -870,7 +870,6 @@ def render_sidebar(screener: pd.DataFrame):
 
     elif active_menu == "ARA Screener":
         render_rank_table("ARA Screener", screener, "ARA Score", "ara")
-
     st.markdown("<br>", unsafe_allow_html=True)
     status = "MARKET OPEN" if market_open_now() else "MARKET CLOSED"
     cls = "status-open" if market_open_now() else "status-closed"
