@@ -17,12 +17,37 @@ st.set_page_config(page_title="IDX Pro Dashboard V2", page_icon="📈", layout="
 # =========================
 # CONFIG
 # =========================
-IDX_TICKERS = [
-    "AADI","ACES","ADRO","AKRA","AMRT","ANTM","ARTO","ASII","BBCA","BBNI","BBRI","BBTN",
-    "BMRI","BRIS","BUKA","CPIN","EMTK","EXCL","GOTO","HRUM","ICBP","INCO","INDF","INKP",
-    "ITMG","JPFA","KLBF","MAPI","MBMA","MDKA","MEDC","PGAS","PTBA","SIDO","SMGR","TINS",
-    "TLKM","TOWR","UNTR","UNVR"
-]
+ALL_IDX_TICKERS = sorted(list(set([
+    "AADI","AALI","ABBA","ABDA","ABMM","ACES","ACST","ADCP","ADES","ADHI","ADMF","ADMR","ADRO",
+    "AGAR","AGII","AGRO","AGRS","AHAP","AIMS","AISA","AKKU","AKPI","AKRA","AKSI","ALDO","ALKA",
+    "ALMI","ALTO","AMAG","AMFG","AMIN","AMMN","AMRT","ANDI","ANJT","ANTM","APEX","APIC","APII",
+    "APLI","APLN","ARCI","ARGO","ARII","ARKA","ARMY","ARTO","ASBI","ASDM","ASGR","ASII","ASJT",
+    "ASMI","ASRI","ASUR","AUTO","AVIA","AWAN","AXIO","BACA","BAJA","BALI","BANK","BAPA","BATA",
+    "BAUT","BBCA","BBHI","BBKP","BBLD","BBMD","BBNI","BBRI","BBTN","BBYB","BCAP","BCIC","BDMN",
+    "BEBS","BELL","BESS","BEST","BFIN","BGTG","BHAT","BIKA","BIMA","BINA","BIPI","BJBR","BJTM",
+    "BKDP","BKSL","BLTA","BLTZ","BMAS","BMHS","BMRI","BMSR","BMTR","BNBA","BNBR","BNGA","BNII",
+    "BNLI","BOBA","BOLA","BOSS","BRAM","BRIS","BRMS","BRNA","BROT","BSDE","BSIM","BSSR","BSWD",
+    "BTEK","BTPS","BUKA","BUKK","BULL","BUMI","BUVA","BVIC","BWPT","BYAN","CBMF","CCSI","CEKA",
+    "CENT","CFIN","CINT","CITY","CLAY","CMNP","CMRY","CMPP","CNKO","CODE","CPIN","CPRO","CSAP",
+    "CSIS","CTBN","CTRA","CUAN","DAYA","DEFI","DEPO","DGIK","DILD","DKFT","DLTA","DMAS","DNAR",
+    "DOID","DSFI","DSNG","DSSA","DUTI","DYAN","EAST","ECII","ELSA","EMDE","EMTK","ENRG","ERAA",
+    "ESSA","ESTA","EXCL","FAPA","FILM","FINN","FISH","FORU","FPNI","FREN","GAMA","GDST","GEMS",
+    "GGRM","GIAA","GJTL","GLVA","GMFI","GOLD","GOOD","GOTO","GPRA","GSMF","GTBO","GWSA","HEAL",
+    "HELI","HERO","HITS","HKMU","HMSP","HOME","HRTA","HRUM","IATA","IBST","ICBP","INAF","INAI",
+    "INCO","INDF","INDR","INKP","INOV","INTP","IPCC","ISAT","ITMG","JARR","JASS","JAWA","JECC",
+    "JGLE","JPFA","JRPT","JSMR","JTPE","KEEN","KIAS","KINO","KLBF","KMDS","KMTR","KOBX","KONI",
+    "KOPI","KPAS","KRAS","LABA","LAPD","LCGP","LIFE","LINK","LMAS","LPCK","LPIN","LPKR","LPPF",
+    "LRNA","LSIP","MAIN","MAPA","MAPI","MARK","MASA","MAYA","MBAP","MBMA","MCAS","MDKA","MEDC",
+    "MFIN","MIDI","MIKA","MLBI","MLIA","MLPL","MMIX","MNCN","MPMX","MREI","MSIN","MTDL","MTEL",
+    "MYOH","MYOR","NCKL","NELY","NICL","NIKL","NISP","PACK","PANR","PANI","PANS","PBID","PCAR",
+    "PGAS","PGEO","PGLI","PICO","PJAA","PKPK","PLAN","PLIN","PMJS","PNBN","PNGO","PNIN","PNLF",
+    "POLL","PORT","PPRE","PPRO","PRDA","PTBA","PTMP","PTPP","PURA","PWON","RAJA","RALS","RAMS",
+    "RBMS","RICY","RMKE","ROTI","SCMA","SDMU","SDPC","SIDO","SILO","SIMA","SIMP","SKBM","SKLT",
+    "SMAR","SMBR","SMDR","SMGR","SMIL","SMMT","SMRA","SMSM","SOHO","SPMA","SRIL","SSIA","SSMS",
+    "STAR","SURE","TAPG","TBIG","TBLA","TBMS","TBUO","TCID","TECH","TELE","TFAS","TGKA","TINS",
+    "TKIM","TLKM","TMAS","TOBA","TOOL","TOPS","TOWR","TPIA","TRAM","TRIM","TRIS","TRJA","TSPC",
+    "ULTJ","UNIQ","UNTR","UNVR","WICO","WIKA","WINS","WOOD","WSBP","WSKT","WTON","ZINC"
+])))
 
 COMPANY_META = {
     "BBCA": {"name": "Bank Central Asia Tbk.", "sector": "Perbankan"},
@@ -144,6 +169,22 @@ st.markdown(
 # =========================
 # BASIC HELPERS
 # =========================
+@st.cache_data(ttl=3600, show_spinner=False)
+def build_master_search_options() -> pd.DataFrame:
+    rows = []
+    for ticker in ALL_IDX_TICKERS:
+        meta = COMPANY_META.get(ticker, {})
+        name = meta.get("name", ticker)
+        sector = meta.get("sector", "-")
+        rows.append(
+            {
+                "Ticker": ticker,
+                "Name": name,
+                "Sector": sector,
+                "Label": f"{ticker} — {name}",
+            }
+        )
+    return pd.DataFrame(rows).drop_duplicates(subset=["Ticker"]).reset_index(drop=True)
 def normalize_ticker(ticker: str) -> str:
     return ticker if ticker.startswith("^") or ticker.endswith(".JK") else f"{ticker}.JK"
 
@@ -588,29 +629,76 @@ def render_top_market_bar():
 def render_ticker_search_combined(screener: pd.DataFrame):
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.subheader("SEARCH EMITEN")
-    options = screener[["Ticker", "Name"]].copy()
-    options["Label"] = options["Ticker"] + " — " + options["Name"]
+
+    master_options = build_master_search_options()
     current = st.session_state.get("selected_ticker", "BBCA")
+
     default_idx = 0
-    if current in options["Ticker"].values:
-        default_idx = options.index[options["Ticker"] == current][0]
-    selected_label = st.selectbox("Cari dari daftar", options["Label"].tolist(), index=default_idx if default_idx < len(options) else 0)
+    matched_idx = master_options.index[master_options["Ticker"] == current].tolist()
+    if matched_idx:
+        default_idx = matched_idx[0]
+
+    selected_label = st.selectbox(
+        "Cari dari semua ticker IDX",
+        master_options["Label"].tolist(),
+        index=default_idx if default_idx < len(master_options) else 0,
+    )
+
     c1, c2 = st.columns([3, 1.1])
     with c1:
-        manual = st.text_input("Atau ketik ticker manual", value=current, placeholder="BBCA / TLKM / BBRI")
+        manual = st.text_input(
+            "Atau ketik ticker / nama emiten",
+            value=current,
+            placeholder="Contoh: BBCA, BMRI, TLKM, PGEO, Bank Mandiri, Telkom",
+        )
     with c2:
         open_btn = st.button("Open Ticker", use_container_width=True)
 
-    selected_from_box = options.loc[options["Label"] == selected_label, "Ticker"].iloc[0]
+    selected_from_box = master_options.loc[
+        master_options["Label"] == selected_label, "Ticker"
+    ].iloc[0]
+
     if selected_from_box != current:
         st.session_state["selected_ticker"] = selected_from_box
         st.rerun()
+
     if open_btn:
         typed = manual.strip().upper().replace(".JK", "")
-        if typed:
+
+        alias_map = {
+            "MANDIRI": "BMRI",
+            "BANK MANDIRI": "BMRI",
+            "BCA": "BBCA",
+            "BANK CENTRAL ASIA": "BBCA",
+            "BRI": "BBRI",
+            "BANK RAKYAT INDONESIA": "BBRI",
+            "BNI": "BBNI",
+            "BANK NEGARA INDONESIA": "BBNI",
+            "TELKOM": "TLKM",
+            "TELKOM INDONESIA": "TLKM",
+            "ASTRA": "ASII",
+            "GOTO": "GOTO",
+        }
+
+        if typed in alias_map:
+            typed = alias_map[typed]
+
+        if typed in ALL_IDX_TICKERS:
             st.session_state["selected_ticker"] = typed
             st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+
+        name_match = master_options[
+            master_options["Ticker"].str.upper().str.contains(typed, na=False)
+            | master_options["Name"].str.upper().str.contains(typed, na=False)
+        ]
+
+        if not name_match.empty:
+            st.session_state["selected_ticker"] = name_match.iloc[0]["Ticker"]
+            st.rerun()
+
+        st.warning(f"Ticker / nama emiten '{manual}' tidak ditemukan di master IDX.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_top_cards(top_df: pd.DataFrame):
@@ -678,22 +766,45 @@ def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: 
 
 
 def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
-    tf_map = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "6M": ("6mo", "1d"), "1Y": ("1y", "1d"), "3Y": ("3y", "1wk")}
+    tf_map = {
+        "1M": ("1mo", "1d"),
+        "3M": ("3mo", "1d"),
+        "6M": ("6mo", "1d"),
+        "1Y": ("1y", "1d"),
+        "3Y": ("3y", "1wk"),
+    }
     timeframe = st.radio("Timeframe", list(tf_map.keys()), horizontal=True, index=2)
     period, interval = tf_map[timeframe]
+
     df = load_stock_data(selected_ticker, period=period, interval=interval)
     if df.empty:
         st.error(f"Data {selected_ticker} tidak tersedia.")
         return
 
     row = screener[screener["Ticker"] == selected_ticker]
+
     if row.empty:
-        score, details = score_stock(load_stock_data(selected_ticker, period="1y", interval="1d"))
-        extra = {"BSJP Score": 0, "Swing Score": 0, "Day Score": 0, "Bandar Score": 0, "ARA Score": 0, "SignalRec": details.get("signal", "WAIT"), "AccStatus": details.get("accumulation", "Neutral")}
+        base_df = load_stock_data(selected_ticker, period="1y", interval="1d")
+        if base_df.empty:
+            st.error(f"Ticker {selected_ticker} tidak ditemukan atau data tidak tersedia.")
+            return
+
+        score, details = score_stock(base_df)
+        logic = compute_screener_logic(base_df, score, details)
+
+        extra = {
+            "BSJP Score": logic["BSJP Score"],
+            "Swing Score": logic["Swing Score"],
+            "Day Score": logic["Day Score"],
+            "Bandar Score": logic["Bandar Score"],
+            "ARA Score": logic["ARA Score"],
+            "SignalRec": details.get("signal", "WAIT"),
+            "AccStatus": details.get("accumulation", "Neutral"),
+            "Trend": details.get("trend", "Downtrend"),
+        }
     else:
         row = row.iloc[0]
         score = int(row["Score"])
-        details = {"signal": row["SignalRec"], "accumulation": row["AccStatus"], "trend": row["Trend"]}
         extra = {
             "BSJP Score": int(row["BSJP Score"]),
             "Swing Score": int(row["Swing Score"]),
@@ -702,6 +813,7 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
             "ARA Score": int(row["ARA Score"]),
             "SignalRec": row["SignalRec"],
             "AccStatus": row["AccStatus"],
+            "Trend": row["Trend"],
         }
 
     meta = load_fast_info(selected_ticker)
@@ -771,8 +883,6 @@ def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
 def ensure_state(screener: pd.DataFrame):
     if "selected_ticker" not in st.session_state:
         st.session_state["selected_ticker"] = "BBCA"
-    if not screener.empty and st.session_state["selected_ticker"] not in screener["Ticker"].tolist():
-        st.session_state["selected_ticker"] = screener.iloc[0]["Ticker"]
 
 
 def ensure_menu_state():
