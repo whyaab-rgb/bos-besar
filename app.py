@@ -898,7 +898,7 @@ def main():
         st_autorefresh(interval=60_000, key="auto")
 
     with st.spinner("Memuat screener IDX..."):
-        screener = build_top_screener(IDX_TICKERS)
+        screener = build_top_screener(ALL_IDX_TICKERS)
 
     ensure_state(screener)
     ensure_menu_state()
