@@ -955,7 +955,7 @@ def render_bsjp_main_table(screener: pd.DataFrame):
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):selected_ticker: str, screener: pd.DataFrame):
+def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
     tf_map = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "6M": ("6mo", "1d"), "1Y": ("1y", "1d"), "3Y": ("3y", "1wk")}
     timeframe = st.radio("Timeframe", list(tf_map.keys()), horizontal=True, index=2)
     period, interval = tf_map[timeframe]
