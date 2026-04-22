@@ -763,76 +763,100 @@ def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: 
     st.write(screener.head())
 
 
-def render_bsjp_main_table(screener: pd.DataFrame):
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle-main">Klik baris untuk membuka detail saham</div>', unsafe_allow_html=True)
+@st.cache_data(ttl=60, show_spinner=False)
+def build_top_screener(tickers: list[str]) -> pd.DataFrame:
+    rows = []
 
-    if screener.empty:
-        st.error("SCREENER KOSONG - data gagal dimuat")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
+    priority_tickers = [
+        "BBCA", "BMRI", "BBRI", "TLKM", "ASII",
+        "ADRO", "ANTM", "MDKA", "PGAS", "UNTR",
+        "CPIN", "ICBP", "INDF", "KLBF", "SMGR",
+        "TOWR", "BRIS", "ITMG", "MEDC", "PGEO"
+    ]
 
-    df = screener.copy().sort_values("BSJP Score", ascending=False).reset_index(drop=True)
+    scan_list = [t for t in priority_tickers if t in tickers]
 
-    numeric_cols = ["Price", "Pct", "RSI", "RVOL", "ValueTraded", "BSJP Score"]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+    for ticker in scan_list:
+        try:
+            df = load_stock_data(ticker, period="1y", interval="1d")
+            if df.empty or len(df) < 80:
+                continue
 
-    df["Price"] = df["Price"].fillna(0)
-    df["Pct"] = df["Pct"].fillna(0)
-    df["RSI"] = df["RSI"].fillna(50)
-    df["RVOL"] = df["RVOL"].fillna(1.0)
-    df["ValueTraded"] = df["ValueTraded"].fillna(0)
-    df["BSJP Score"] = df["BSJP Score"].fillna(0)
-    df["AccStatus"] = df["AccStatus"].fillna("Neutral")
-    df["Trend"] = df["Trend"].fillna("NETRAL")
+            last_val = pd.to_numeric(df["Close"].iloc[-1], errors="coerce")
+            prev_val = pd.to_numeric(df["Close"].iloc[-2], errors="coerce")
+            vol_val = pd.to_numeric(df["Volume"].iloc[-1], errors="coerce")
 
-    def aksi_label(score):
-        return "SIAP BELI" if score >= 85 else "AT ENTRY" if score >= 75 else "WATCH"
+            if pd.isna(last_val) or pd.isna(prev_val):
+                continue
 
-    def sinyal_label(acc, score):
-        if acc == "Accumulation" and score >= 80:
-            return "SUPER"
-        if acc == "Accumulation":
-            return "AKUM"
-        if score >= 70:
-            return "ON TRACK"
-        return "WAIT"
+            last = float(last_val)
+            prev = float(prev_val)
+            vol = float(vol_val) if not pd.isna(vol_val) else 0.0
 
-    def fase_label(acc):
-        return "AKUM" if acc == "Accumulation" else "DISTRIBUSI" if acc == "Distribution" else "NETRAL"
+            meta = load_fast_info(ticker)
+            score, details = score_stock(df)
+            if not details:
+                continue
 
-    def trend_label(trend):
-        return "BULL" if trend == "Uptrend" else "BEAR" if trend == "Downtrend" else "NETRAL"
+            change = last - prev
+            pct = (change / prev * 100) if prev else 0.0
+            extra = compute_screener_logic(df, score, details)
 
-    table_df = pd.DataFrame({
-        "EMITEN": df["Ticker"],
-        "GAIN": df["Pct"].round(1),
-        "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1),
-        "AKSI": df["BSJP Score"].apply(aksi_label),
-        "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
-        "RVOL": (df["RVOL"] * 100).round(1),
-        "ENTRY": (df["Price"] * 0.98).round(0).fillna(0).astype(int),
-        "NOW": df["Price"].round(0).fillna(0).astype(int),
-        "TP": (df["Price"] * 1.05).round(0).fillna(0).astype(int),
-        "SL": (df["Price"] * 0.97).round(0).fillna(0).astype(int),
-        "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
-        "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
-        "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
-        "RSI 5M": df["RSI"].round(1),
-        "VAL": df["ValueTraded"].apply(fmt_short),
-        "FASE": df["AccStatus"].apply(fase_label),
-        "TREND": df["Trend"].apply(trend_label),
-        "BSJP SCORE": df["BSJP Score"].astype(int),
-    })
+            rows.append({
+                "Ticker": ticker,
+                "Name": meta.get("name", ticker),
+                "Sector": meta.get("sector", "-"),
+                "Price": last,
+                "Change": change,
+                "Pct": pct,
+                "Score": score,
+                "ScoreLabel": details["label"],
+                "Volume": vol,
+                "ValueTraded": last * vol,
+                "MarketCap": meta.get("market_cap", np.nan),
+                "RSI": details["rsi"],
+                "RVOL": details["rvol"],
+                "CMF": details["cmf"],
+                "Trend": details["trend"],
+                "AccStatus": details["accumulation"],
+                "SignalRec": details["signal"],
+                **extra,
+            })
+        except Exception:
+            continue
 
-    if table_df.empty:
-        st.error("TABLE DF KOSONG")
-        st.write(df.head())
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
+    out = pd.DataFrame(rows)
+
+    if out.empty:
+        return pd.DataFrame([{
+            "Ticker": "BBCA",
+            "Name": "Bank Central Asia Tbk.",
+            "Sector": "Perbankan",
+            "Price": 0.0,
+            "Change": 0.0,
+            "Pct": 0.0,
+            "Score": 0,
+            "ScoreLabel": "No Data",
+            "Volume": 0.0,
+            "ValueTraded": 0.0,
+            "MarketCap": np.nan,
+            "RSI": 50.0,
+            "RVOL": 1.0,
+            "CMF": 0.0,
+            "Trend": "NETRAL",
+            "AccStatus": "Neutral",
+            "SignalRec": "WAIT",
+            "BSJP Score": 0,
+            "Swing Score": 0,
+            "Day Score": 0,
+            "Bandar Score": 0,
+            "ARA Score": 0,
+            "Rank": 1,
+        }])
+
+    out = out.sort_values(["Score", "Pct"], ascending=[False, False]).reset_index(drop=True)
+    out["Rank"] = np.arange(1, len(out) + 1)
+    return out
 
     st.caption(f"Jumlah data BSJP: {len(table_df)}")
 
