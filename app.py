@@ -1025,7 +1025,7 @@ def main():
 
     left, right = st.columns([4.9, 1.7], gap="large")
 
-    with left:
+with left:
     active_menu = st.session_state.get("active_menu", "Dashboard")
 
     if active_menu == "Dashboard":
