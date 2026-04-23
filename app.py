@@ -1,1084 +1,721 @@
+import textwrap
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
-try:
-    from streamlit_autorefresh import st_autorefresh
-except Exception:
-    st_autorefresh = None
+st.set_page_config(page_title="Auto Scan Oversold Rebound", layout="wide")
 
-st.set_page_config(
-    page_title="IDX Pro Dashboard Final",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# =========================
-# CONFIG
-# =========================
-ALL_IDX_TICKERS = sorted(list(set([
-    "AADI","AALI","ABBA","ABDA","ABMM","ACES","ACST","ADCP","ADES","ADHI","ADMF","ADMR","ADRO",
-    "AGAR","AGII","AGRO","AGRS","AHAP","AIMS","AISA","AKKU","AKPI","AKRA","AKSI","ALDO","ALKA",
-    "ALMI","ALTO","AMAG","AMFG","AMIN","AMMN","AMRT","ANDI","ANJT","ANTM","APEX","APIC","APII",
-    "APLI","APLN","ARCI","ARGO","ARII","ARKA","ARMY","ARTO","ASBI","ASDM","ASGR","ASII","ASJT",
-    "ASMI","ASRI","ASUR","AUTO","AVIA","AWAN","AXIO","BACA","BAJA","BALI","BANK","BAPA","BATA",
-    "BAUT","BBCA","BBHI","BBKP","BBLD","BBMD","BBNI","BBRI","BBTN","BBYB","BCAP","BCIC","BDMN",
-    "BEBS","BELL","BESS","BEST","BFIN","BGTG","BHAT","BIKA","BIMA","BINA","BIPI","BJBR","BJTM",
-    "BKDP","BKSL","BLTA","BLTZ","BMAS","BMHS","BMRI","BMSR","BMTR","BNBA","BNBR","BNGA","BNII",
-    "BNLI","BOBA","BOLA","BOSS","BRAM","BRIS","BRMS","BRNA","BROT","BSDE","BSIM","BSSR","BSWD",
-    "BTEK","BTPS","BUKA","BUKK","BULL","BUMI","BUVA","BVIC","BWPT","BYAN","CBMF","CCSI","CEKA",
-    "CENT","CFIN","CINT","CITY","CLAY","CMNP","CMRY","CMPP","CNKO","CODE","CPIN","CPRO","CSAP",
-    "CSIS","CTBN","CTRA","CUAN","DAYA","DEFI","DEPO","DGIK","DILD","DKFT","DLTA","DMAS","DNAR",
-    "DOID","DSFI","DSNG","DSSA","DUTI","DYAN","EAST","ECII","ELSA","EMDE","EMTK","ENRG","ERAA",
-    "ESSA","ESTA","EXCL","FAPA","FILM","FINN","FISH","FORU","FPNI","FREN","GAMA","GDST","GEMS",
-    "GGRM","GIAA","GJTL","GLVA","GMFI","GOLD","GOOD","GOTO","GPRA","GSMF","GTBO","GWSA","HEAL",
-    "HELI","HERO","HITS","HKMU","HMSP","HOME","HRTA","HRUM","IATA","IBST","ICBP","INAF","INAI",
-    "INCO","INDF","INDR","INKP","INOV","INTP","IPCC","ISAT","ITMG","JARR","JASS","JAWA","JECC",
-    "JGLE","JPFA","JRPT","JSMR","JTPE","KEEN","KIAS","KINO","KLBF","KMDS","KMTR","KOBX","KONI",
-    "KOPI","KPAS","KRAS","LABA","LAPD","LCGP","LIFE","LINK","LMAS","LPCK","LPIN","LPKR","LPPF",
-    "LRNA","LSIP","MAIN","MAPA","MAPI","MARK","MASA","MAYA","MBAP","MBMA","MCAS","MDKA","MEDC",
-    "MFIN","MIDI","MIKA","MLBI","MLIA","MLPL","MMIX","MNCN","MPMX","MREI","MSIN","MTDL","MTEL",
-    "MYOH","MYOR","NCKL","NELY","NICL","NIKL","NISP","PACK","PANR","PANI","PANS","PBID","PCAR",
-    "PGAS","PGEO","PGLI","PICO","PJAA","PKPK","PLAN","PLIN","PMJS","PNBN","PNGO","PNIN","PNLF",
-    "POLL","PORT","PPRE","PPRO","PRDA","PTBA","PTMP","PTPP","PURA","PWON","RAJA","RALS","RAMS",
-    "RBMS","RICY","RMKE","ROTI","SCMA","SDMU","SDPC","SIDO","SILO","SIMA","SIMP","SKBM","SKLT",
-    "SMAR","SMBR","SMDR","SMGR","SMIL","SMMT","SMRA","SMSM","SOHO","SPMA","SRIL","SSIA","SSMS",
-    "STAR","SURE","TAPG","TBIG","TBLA","TBMS","TBUO","TCID","TECH","TELE","TFAS","TGKA","TINS",
-    "TKIM","TLKM","TMAS","TOBA","TOOL","TOPS","TOWR","TPIA","TRAM","TRIM","TRIS","TRJA","TSPC",
-    "ULTJ","UNIQ","UNTR","UNVR","WICO","WIKA","WINS","WOOD","WSBP","WSKT","WTON","ZINC"
-])))
-
-IDX_TICKERS = ALL_IDX_TICKERS
-
-PRIORITY_TICKERS = [
-    "BBCA", "BMRI", "BBRI", "TLKM", "ASII", "ADRO", "ANTM", "MDKA", "PGAS", "UNTR",
-    "CPIN", "ICBP", "INDF", "KLBF", "SMGR", "TOWR", "BRIS", "ITMG", "MEDC", "PGEO",
+# =========================================================
+# WATCHLIST MASTER IDX
+# =========================================================
+SYMBOLS = [
+    "AALI.JK","ACES.JK","ADRO.JK","AKRA.JK","AMRT.JK","ANTM.JK","ARTO.JK","ASII.JK","BBCA.JK","BBNI.JK",
+    "BBRI.JK","BBTN.JK","BMRI.JK","BRIS.JK","BRMS.JK","BRPT.JK","BUKA.JK","CPIN.JK","CTRA.JK","ERAA.JK",
+    "ESSA.JK","EXCL.JK","GOTO.JK","HRUM.JK","ICBP.JK","INCO.JK","INDF.JK","INKP.JK","INTP.JK","ISAT.JK",
+    "ITMG.JK","JPFA.JK","JSMR.JK","KLBF.JK","MAPI.JK","MDKA.JK","MEDC.JK","MIKA.JK","MTDL.JK","MYOR.JK",
+    "PGAS.JK","PTBA.JK","PWON.JK","RAJA.JK","SIDO.JK","SMGR.JK","SMRA.JK","TBIG.JK","TLKM.JK","TOWR.JK",
+    "TPIA.JK","UNTR.JK","UNVR.JK","BBYB.JK","HEAL.JK","MAPA.JK","NIKL.JK","PGEO.JK","SCMA.JK","SILO.JK",
+    "SSIA.JK","TKIM.JK","WIKA.JK","WSKT.JK","GJTL.JK","ENRG.JK","DOID.JK","ELSA.JK","INDY.JK","ADMR.JK",
+    "AVIA.JK","BMHS.JK","BTPS.JK","CARS.JK","CMRY.JK","DAYA.JK","DMAS.JK","EMTK.JK","FAST.JK","FILM.JK",
+    "HMSP.JK","HOKI.JK","IPTV.JK","KAEF.JK","LSIP.JK","MNCN.JK","MPMX.JK","MTLA.JK","PNLF.JK","PTPP.JK",
+    "SMDR.JK","SRTG.JK","TINS.JK","TMAS.JK","WEGE.JK","WTON.JK","ASRI.JK","BEST.JK","CLEO.JK","DGIK.JK"
 ]
 
-COMPANY_META = {
-    "BBCA": {"name": "Bank Central Asia Tbk.", "sector": "Perbankan"},
-    "BBRI": {"name": "Bank Rakyat Indonesia Tbk.", "sector": "Perbankan"},
-    "BMRI": {"name": "Bank Mandiri (Persero) Tbk.", "sector": "Perbankan"},
-    "BBNI": {"name": "Bank Negara Indonesia Tbk.", "sector": "Perbankan"},
-    "TLKM": {"name": "Telkom Indonesia (Persero) Tbk.", "sector": "Telekomunikasi"},
-    "ASII": {"name": "Astra International Tbk.", "sector": "Otomotif"},
-    "ANTM": {"name": "Aneka Tambang Tbk.", "sector": "Komoditas"},
-    "ADRO": {"name": "Adaro Energy Indonesia Tbk.", "sector": "Energi"},
-    "AKRA": {"name": "AKR Corporindo Tbk.", "sector": "Distribusi"},
-    "AMRT": {"name": "Sumber Alfaria Trijaya Tbk.", "sector": "Ritel"},
-    "BRIS": {"name": "Bank Syariah Indonesia Tbk.", "sector": "Perbankan"},
-    "CPIN": {"name": "Charoen Pokphand Indonesia Tbk.", "sector": "Konsumsi"},
-    "GOTO": {"name": "GoTo Gojek Tokopedia Tbk.", "sector": "Teknologi"},
-    "ICBP": {"name": "Indofood CBP Sukses Makmur Tbk.", "sector": "Konsumsi"},
-    "INDF": {"name": "Indofood Sukses Makmur Tbk.", "sector": "Konsumsi"},
-    "ITMG": {"name": "Indo Tambangraya Megah Tbk.", "sector": "Energi"},
-    "KLBF": {"name": "Kalbe Farma Tbk.", "sector": "Farmasi"},
-    "MAPI": {"name": "Mitra Adiperkasa Tbk.", "sector": "Ritel"},
-    "MDKA": {"name": "Merdeka Copper Gold Tbk.", "sector": "Komoditas"},
-    "MEDC": {"name": "Medco Energi Internasional Tbk.", "sector": "Energi"},
-    "PGAS": {"name": "Perusahaan Gas Negara Tbk.", "sector": "Energi"},
-    "PTBA": {"name": "Bukit Asam Tbk.", "sector": "Energi"},
-    "SIDO": {"name": "Sido Muncul Tbk.", "sector": "Farmasi"},
-    "SMGR": {"name": "Semen Indonesia Tbk.", "sector": "Material Dasar"},
-    "TOWR": {"name": "Sarana Menara Nusantara Tbk.", "sector": "Infrastruktur"},
-    "UNTR": {"name": "United Tractors Tbk.", "sector": "Industri"},
-    "UNVR": {"name": "Unilever Indonesia Tbk.", "sector": "Konsumsi"},
-    "PGEO": {"name": "Pertamina Geothermal Energy Tbk.", "sector": "Energi"},
-    "PTMP": {"name": "Mitra Pack Tbk.", "sector": "Industri"},
-    "SMIL": {"name": "Sarana Mitra Luas Tbk.", "sector": "Transportasi"},
-    "NCKL": {"name": "Trimegah Bangun Persada Tbk.", "sector": "Komoditas"},
+TOP_N = 20
+MAX_PRICE = 5000
+
+# =========================================================
+# GLOBAL STYLE
+# =========================================================
+st.markdown("""
+<style>
+html, body, [class*="css"] {
+    background-color: #081018;
+    color: white;
 }
-
-MARKET_SYMBOLS = {
-    "IHSG": "^JKSE",
-    "DJI": "^DJI",
-    "NASDAQ": "^IXIC",
-    "S&P 500": "^GSPC",
+.block-container {
+    max-width: 99%;
+    padding-top: 0.8rem;
+    padding-bottom: 1rem;
 }
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(180deg, #071019 0%, #0a1320 100%);
+}
+[data-testid="stSidebar"] {
+    background-color: #09111d;
+}
+h1, h2, h3, h4, h5, h6, p, span, div, label {
+    color: #e8f0ff !important;
+}
+.small-note {
+    font-size: 12px;
+    color: #9db1cc !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# =========================
-# STYLE
-# =========================
-st.markdown(
-    """
-    <style>
-    :root {
-        --line: rgba(95, 146, 255, 0.16);
-        --text: #e6eefc;
-        --muted: #93a4bf;
-        --green: #00ff9c;
-        --red: #ff4d4f;
-        --blue: #4ea1ff;
-        --orange: #ffb347;
-        --purple: #9b6dff;
-    }
-    .stApp { background: linear-gradient(180deg, #09111c 0%, #0b1220 100%); color: var(--text); }
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 1800px; }
-    [data-testid="stSidebar"] { background: linear-gradient(180deg, #07101b 0%, #0a111d 100%); border-right: 1px solid var(--line); }
-    .panel {
-        background: linear-gradient(180deg, rgba(15,26,46,0.98) 0%, rgba(10,18,34,0.98) 100%);
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 14px 16px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.18);
-    }
-    .mini-panel {
-        background: rgba(255,255,255,0.02);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 10px 12px;
-    }
-    .title-main { font-size: 1.6rem; font-weight: 800; margin-bottom: .2rem; }
-    .subtitle-main { color: var(--muted); margin-bottom: .8rem; }
-    .metric-title { color: var(--muted); font-size: .78rem; }
-    .metric-value { color: var(--text); font-size: 1.35rem; font-weight: 800; }
-    .up { color: var(--green); font-weight: 700; }
-    .down { color: var(--red); font-weight: 700; }
-    .score-box {
-        border: 1px solid rgba(0,255,156,.28);
-        background: rgba(0,255,156,.07);
-        border-radius: 14px;
-        padding: 10px 12px;
-        text-align: center;
-    }
-    .score-num { font-size: 1.8rem; font-weight: 800; color: var(--green); }
-    .score-label { font-size: .78rem; color: #b7ffd8; }
-    .pill {
-        display: inline-block; padding: .32rem .7rem; border-radius: 999px;
-        background: rgba(78,161,255,.09); border: 1px solid var(--line); color: #cfe1ff; font-size: .82rem; font-weight: 700;
-    }
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
-    .kpi-cell { background: rgba(255,255,255,.02); border: 1px solid rgba(95,146,255,.1); border-radius: 12px; padding: 8px 10px; }
-    .buy-chip,.hold-chip,.wait-chip,.sell-chip {
-        display:inline-block; border-radius:10px; padding:.34rem .7rem; font-size:.84rem; font-weight:800;
-    }
-    .buy-chip { background: rgba(0,255,156,.14); color: var(--green); }
-    .hold-chip { background: rgba(78,161,255,.14); color: var(--blue); }
-    .wait-chip { background: rgba(255,179,71,.14); color: var(--orange); }
-    .sell-chip { background: rgba(255,77,79,.14); color: var(--red); }
-    .status-open,.status-closed {
-        display:inline-block; border-radius:999px; padding:.28rem .68rem; font-size:.76rem; font-weight:800;
-    }
-    .status-open { background: rgba(0,255,156,.12); color: var(--green); border: 1px solid rgba(0,255,156,.24); }
-    .status-closed { background: rgba(255,77,79,.12); color: var(--red); border: 1px solid rgba(255,77,79,.24); }
-    .small-note { color: var(--muted); font-size: .78rem; }
-    .stButton > button {
-        width: 100%; border-radius: 12px; font-weight: 700;
-        border: 1px solid rgba(95,146,255,.18);
-        background: linear-gradient(180deg, #11203a 0%, #0c162d 100%); color: #eef4ff;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# =========================
+# =========================================================
 # HELPERS
-# =========================
-def normalize_ticker(ticker: str) -> str:
-    return ticker if ticker.startswith("^") or ticker.endswith(".JK") else f"{ticker}.JK"
-
-
-def fmt_num(x, digits=2):
-    if x is None or pd.isna(x):
-        return "-"
-    return f"{float(x):,.{digits}f}"
-
-
-def fmt_short(x):
-    if x is None or pd.isna(x):
-        return "-"
-    x = float(x)
-    ax = abs(x)
-    if ax >= 1_000_000_000_000:
-        return f"{x/1_000_000_000_000:.2f}T"
-    if ax >= 1_000_000_000:
-        return f"{x/1_000_000_000:.2f}B"
-    if ax >= 1_000_000:
-        return f"{x/1_000_000:.2f}M"
-    if ax >= 1_000:
-        return f"{x/1_000:.2f}K"
-    return f"{x:.0f}"
-
-
-def market_open_now() -> bool:
-    now = datetime.now()
-    return now.weekday() < 5 and 9 <= now.hour < 16
-
-
-def chip_class(signal: str) -> str:
-    return "buy-chip" if signal == "BUY" else "hold-chip" if signal == "HOLD" else "sell-chip" if signal == "SELL" else "wait-chip"
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def build_master_search_options() -> pd.DataFrame:
-    rows = []
-    for ticker in ALL_IDX_TICKERS:
-        meta = COMPANY_META.get(ticker, {})
-        name = meta.get("name", ticker)
-        sector = meta.get("sector", "-")
-        rows.append({
-            "Ticker": ticker,
-            "Name": name,
-            "Sector": sector,
-            "Label": f"{ticker} — {name}",
-        })
-    return pd.DataFrame(rows).drop_duplicates(subset=["Ticker"]).reset_index(drop=True)
-
-
-# =========================
-# DATA
-# =========================
-@st.cache_data(ttl=60, show_spinner=False)
-def load_stock_data(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+# =========================================================
+def latest(series: pd.Series) -> float:
     try:
-        df = yf.download(normalize_ticker(ticker), period=period, interval=interval, progress=False, auto_adjust=False)
+        return float(series.iloc[-1])
+    except Exception:
+        return np.nan
+
+def fmt_price(v):
+    if pd.isna(v):
+        return "-"
+    if v >= 100:
+        return f"{v:,.0f}"
+    return f"{v:,.2f}"
+
+def fmt_pct(v):
+    if pd.isna(v):
+        return "-"
+    return f"{v:.1f}%"
+
+def rsi_text(v):
+    if pd.isna(v):
+        return "-"
+    return f"{v:.1f}"
+
+def human_value(v):
+    if pd.isna(v):
+        return "-"
+    if v >= 1_000_000_000_000:
+        return f"{v / 1_000_000_000_000:.1f}T"
+    if v >= 1_000_000_000:
+        return f"{v / 1_000_000_000:.1f}B"
+    if v >= 1_000_000:
+        return f"{v / 1_000_000:.1f}M"
+    return f"{v:,.0f}"
+
+# =========================================================
+# DATA SOURCE
+# =========================================================
+@st.cache_data(ttl=600)
+def get_ohlcv(symbol: str, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
+    try:
+        df = yf.download(symbol, period=period, interval=interval, auto_adjust=False, progress=False, threads=False)
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        df = df.rename(columns=str.title)
-        keep = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
-        df = df[keep].copy()
-        df.dropna(how="all", inplace=True)
-        return df
+        if df.empty:
+            return pd.DataFrame()
+        required = ["Open", "High", "Low", "Close", "Volume"]
+        for col in required:
+            if col not in df.columns:
+                return pd.DataFrame()
+        return df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
     except Exception:
         return pd.DataFrame()
 
-
-@st.cache_data(ttl=300, show_spinner=False)
-def load_fast_info(ticker: str) -> dict:
-    meta = COMPANY_META.get(ticker, {}).copy()
-    try:
-        tk = yf.Ticker(normalize_ticker(ticker))
-        fi = tk.fast_info if hasattr(tk, "fast_info") else {}
-        meta["market_cap"] = fi.get("market_cap")
-        meta["last_price"] = fi.get("last_price")
-    except Exception:
-        meta.setdefault("market_cap", np.nan)
-        meta.setdefault("last_price", np.nan)
-    return meta
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def load_index_data(symbol: str) -> pd.DataFrame:
-    try:
-        df = yf.download(symbol, period="5d", interval="1d", progress=False, auto_adjust=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        df = df.rename(columns=str.title)
-        return df
-    except Exception:
-        return pd.DataFrame()
-
-
-# =========================
+# =========================================================
 # INDICATORS
-# =========================
-def calculate_rsi(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    delta = df["Close"].diff()
+# =========================================================
+def calc_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    x = df.copy()
+
+    x["EMA9"] = x["Close"].ewm(span=9, adjust=False).mean()
+    x["MA20"] = x["Close"].rolling(20).mean()
+    x["MA50"] = x["Close"].rolling(50).mean()
+
+    delta = x["Close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
-    avg_loss = loss.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return (100 - 100 / (1 + rs)).fillna(50)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean().replace(0, np.nan)
+    rs = avg_gain / avg_loss
+    x["RSI"] = 100 - (100 / (1 + rs))
 
+    ema12 = x["Close"].ewm(span=12, adjust=False).mean()
+    ema26 = x["Close"].ewm(span=26, adjust=False).mean()
+    x["MACD"] = ema12 - ema26
+    x["MACD_SIGNAL"] = x["MACD"].ewm(span=9, adjust=False).mean()
+    x["MACD_HIST"] = x["MACD"] - x["MACD_SIGNAL"]
 
-def calculate_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):
-    ema_fast = df["Close"].ewm(span=fast, adjust=False).mean()
-    ema_slow = df["Close"].ewm(span=slow, adjust=False).mean()
-    macd = ema_fast - ema_slow
-    sig = macd.ewm(span=signal, adjust=False).mean()
-    hist = macd - sig
-    return macd, sig, hist
+    x["VOL_MA5"] = x["Volume"].rolling(5).mean()
+    x["VOL_MA20"] = x["Volume"].rolling(20).mean()
 
+    x["SUPPORT20"] = x["Low"].rolling(20).min()
+    x["RESIST20"] = x["High"].rolling(20).max()
 
-def calculate_rvol(df: pd.DataFrame, window: int = 20) -> pd.Series:
-    return (df["Volume"] / df["Volume"].rolling(window).mean().replace(0, np.nan)).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+    high_low = x["High"] - x["Low"]
+    high_close = np.abs(x["High"] - x["Close"].shift())
+    low_close = np.abs(x["Low"] - x["Close"].shift())
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    x["ATR14"] = tr.rolling(14).mean()
 
+    body = (x["Close"] - x["Open"]).abs()
+    upper_wick = x["High"] - x[["Open", "Close"]].max(axis=1)
+    lower_wick = x[["Open", "Close"]].min(axis=1) - x["Low"]
+    candle_range = (x["High"] - x["Low"]).replace(0, np.nan)
 
-def calculate_obv(df: pd.DataFrame) -> pd.Series:
-    direction = np.sign(df["Close"].diff()).fillna(0)
-    return (direction * df["Volume"]).cumsum()
+    x["BODY"] = body
+    x["UPPER_WICK"] = upper_wick.clip(lower=0)
+    x["LOWER_WICK"] = lower_wick.clip(lower=0)
+    x["WICK_PCT"] = ((x["UPPER_WICK"] + x["LOWER_WICK"]) / candle_range) * 100
 
+    return x
 
-def calculate_cmf(df: pd.DataFrame, period: int = 20) -> pd.Series:
-    denom = (df["High"] - df["Low"]).replace(0, np.nan)
-    mfm = ((df["Close"] - df["Low"]) - (df["High"] - df["Close"])) / denom
-    mfv = mfm.fillna(0) * df["Volume"]
-    return mfv.rolling(period).sum() / df["Volume"].rolling(period).sum().replace(0, np.nan)
+# =========================================================
+# OVERSOLD REBOUND ENGINE
+# =========================================================
+def get_rebound_signal(close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+                       vol, vol_ma5, support, bb_lower_proxy, wick, ema9):
+    if any(pd.isna(v) for v in [close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist, vol, vol_ma5, wick]):
+        return "TUNGGU"
 
+    oversold_strict = rsi <= 30
+    oversold_soft = rsi <= 35
+    price_up = close_ > prev_close
+    macd_improve = macd_hist > prev_macd_hist
+    macd_cross_up = macd > macd_signal
+    vol_active = vol > vol_ma5 if not pd.isna(vol_ma5) else False
+    wick_ok = wick < 35
+    near_support = False if pd.isna(support) else close_ <= support * 1.08
+    near_ema9 = False if pd.isna(ema9) else close_ >= ema9 * 0.985
+    near_lower_band = False if pd.isna(bb_lower_proxy) else close_ <= bb_lower_proxy * 1.03
 
-def calculate_ad_line(df: pd.DataFrame) -> pd.Series:
-    denom = (df["High"] - df["Low"]).replace(0, np.nan)
-    clv = ((df["Close"] - df["Low"]) - (df["High"] - df["Close"])) / denom
-    return (clv.fillna(0) * df["Volume"]).cumsum()
+    if oversold_strict and price_up and macd_improve and vol_active and wick_ok and (near_support or near_lower_band) and near_ema9:
+        return "REBOUND KUAT"
 
+    if oversold_soft and price_up and macd_improve and wick_ok and (near_support or near_lower_band):
+        return "REBOUND SIAP"
 
-def calculate_bollinger(df: pd.DataFrame, period: int = 20, stdv: float = 2.0):
-    mid = df["Close"].rolling(period).mean()
-    std = df["Close"].rolling(period).std()
-    return mid, mid + stdv * std, mid - stdv * std
+    if oversold_soft and (macd_improve or macd_cross_up):
+        return "PANTAU REBOUND"
 
+    return "TUNGGU"
 
-def detect_accumulation(df: pd.DataFrame) -> str:
-    if df.empty or len(df) < 20:
-        return "Neutral"
-    cmf = calculate_cmf(df).iloc[-1]
-    obv = calculate_obv(df)
-    ad = calculate_ad_line(df)
-    obv_up = obv.iloc[-1] > obv.iloc[-5] if len(obv) > 5 else False
-    ad_up = ad.iloc[-1] > ad.iloc[-5] if len(ad) > 5 else False
-    if cmf > 0.08 and obv_up and ad_up:
-        return "Accumulation"
-    if cmf < -0.08 and (not obv_up) and (not ad_up):
-        return "Distribution"
-    return "Neutral"
+def get_rebound_action(signal_label, close_, entry):
+    if signal_label == "REBOUND KUAT":
+        if not pd.isna(entry) and close_ <= entry * 1.02:
+            return "BELI BERTAHAP"
+        return "PANTAU DEKAT"
+    if signal_label == "REBOUND SIAP":
+        return "TUNGGU KONFIRMASI"
+    if signal_label == "PANTAU REBOUND":
+        return "PANTAU"
+    return "TUNGGU"
 
-
-def score_stock(df: pd.DataFrame):
-    if df.empty or len(df) < 50:
-        return 0, {}
-    close = df["Close"]
-    rsi = calculate_rsi(df)
-    macd, sig, hist = calculate_macd(df)
-    rvol = calculate_rvol(df)
-    obv = calculate_obv(df)
-    cmf = calculate_cmf(df)
-    ma20 = close.rolling(20).mean()
-    ma50 = close.rolling(50).mean()
-    ma200 = close.rolling(200).mean()
-    bb_mid, bb_up, _ = calculate_bollinger(df)
-
-    last_close = float(close.iloc[-1])
-    last_rsi = float(rsi.iloc[-1])
-    last_rvol = float(rvol.iloc[-1])
-    last_cmf = float(cmf.iloc[-1]) if not pd.isna(cmf.iloc[-1]) else 0.0
-    last_macd = float(macd.iloc[-1])
-    last_sig = float(sig.iloc[-1])
-    hist_up = float(hist.iloc[-1]) > 0
-    obv_up = obv.iloc[-1] > obv.iloc[-5] if len(obv) > 5 else False
-
+def compute_rebound_score(close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+                          vol, vol_ma5, vol_ma20, support, wick, ema9):
     score = 0
-    score += 14 if 52 <= last_rsi <= 68 else 8 if 45 <= last_rsi <= 75 else 3
-    score += 16 if last_macd > last_sig and hist_up else 8 if last_macd > last_sig else 2
-    score += 10 if last_close > ma20.iloc[-1] else 0
-    score += 10 if last_close > ma50.iloc[-1] else 0
-    score += 8 if (not pd.isna(ma200.iloc[-1]) and last_close > ma200.iloc[-1]) else 0
-    score += 6 if (not pd.isna(ma20.iloc[-1]) and not pd.isna(ma50.iloc[-1]) and ma20.iloc[-1] > ma50.iloc[-1]) else 0
-    if not pd.isna(bb_mid.iloc[-1]) and not pd.isna(bb_up.iloc[-1]):
-        score += 8 if bb_mid.iloc[-1] <= last_close <= bb_up.iloc[-1] else 3
-    score += 12 if last_rvol >= 1.8 else 8 if last_rvol >= 1.2 else 4 if last_rvol >= 1 else 1
-    score += 8 if obv_up else 2
-    score += 8 if last_cmf > 0.1 else 5 if last_cmf > 0 else 1
-    rolling_high = df["High"].rolling(20).max().shift(1)
-    score += 8 if (not pd.isna(rolling_high.iloc[-1]) and last_close >= rolling_high.iloc[-1]) else 0
-    score = int(max(0, min(100, score)))
 
-    label = "Sangat Kuat" if score >= 85 else "Kuat" if score >= 70 else "Netral Positif" if score >= 55 else "Lemah" if score >= 40 else "Berisiko"
-    final_signal = "BUY" if score >= 70 else "HOLD" if score >= 55 else "WAIT" if score >= 40 else "SELL"
-    trend = "Uptrend" if (last_close > ma20.iloc[-1] and last_close > ma50.iloc[-1]) else "Downtrend"
-    return score, {
-        "rsi": last_rsi,
-        "macd_bull": last_macd > last_sig,
-        "rvol": last_rvol,
-        "cmf": last_cmf,
-        "obv_up": obv_up,
-        "trend": trend,
-        "accumulation": detect_accumulation(df),
-        "signal": final_signal,
-        "label": label,
-    }
+    if not pd.isna(rsi):
+        if rsi <= 28:
+            score += 30
+        elif rsi <= 32:
+            score += 24
+        elif rsi <= 35:
+            score += 18
+        elif rsi <= 40:
+            score += 8
 
+    if not pd.isna(close_) and not pd.isna(prev_close) and close_ > prev_close:
+        score += 12
 
-def compute_screener_logic(df: pd.DataFrame, base_score: int, details: dict) -> dict:
-    close = df["Close"]
-    rsi = calculate_rsi(df)
-    macd, sig, hist = calculate_macd(df)
-    rvol = calculate_rvol(df)
-    obv = calculate_obv(df)
-    cmf = calculate_cmf(df)
-    ma20 = close.rolling(20).mean()
-    ma50 = close.rolling(50).mean()
+    if not pd.isna(macd_hist) and not pd.isna(prev_macd_hist) and macd_hist > prev_macd_hist:
+        score += 16
 
-    last_close = float(close.iloc[-1])
-    prev_close = float(close.iloc[-2]) if len(close) > 1 else last_close
-    chg_pct = ((last_close - prev_close) / prev_close * 100) if prev_close else 0.0
-    rsi_now = float(rsi.iloc[-1])
-    macd_now = float(macd.iloc[-1])
-    sig_now = float(sig.iloc[-1])
-    hist_now = float(hist.iloc[-1])
-    rvol_now = float(rvol.iloc[-1])
-    cmf_now = float(cmf.iloc[-1]) if not pd.isna(cmf.iloc[-1]) else 0.0
-    obv_up = obv.iloc[-1] > obv.iloc[-5] if len(obv) > 5 else False
-    above_ma20 = last_close > ma20.iloc[-1] if not pd.isna(ma20.iloc[-1]) else False
-    above_ma50 = last_close > ma50.iloc[-1] if not pd.isna(ma50.iloc[-1]) else False
-    acc_status = details.get("accumulation", "Neutral")
+    if not pd.isna(macd) and not pd.isna(macd_signal) and macd > macd_signal:
+        score += 10
 
-    bsjp = 0
-    bsjp += 25 if 55 <= rsi_now <= 72 else 10
-    bsjp += 20 if macd_now > sig_now and hist_now > 0 else 6
-    bsjp += 18 if rvol_now > 1.4 else 8 if rvol_now > 1.0 else 0
-    bsjp += 18 if above_ma20 and above_ma50 else 6
-    bsjp += 19 if acc_status == "Accumulation" else 5
+    if not pd.isna(vol) and not pd.isna(vol_ma5) and vol > vol_ma5:
+        score += 10
 
-    swing = 0
-    swing += 20 if above_ma20 and above_ma50 else 6
-    swing += 20 if 50 <= rsi_now <= 68 else 8
-    swing += 20 if macd_now > sig_now else 5
-    swing += 15 if cmf_now > 0 else 4
-    swing += 25 if base_score >= 70 else 10 if base_score >= 55 else 0
+    if not pd.isna(vol) and not pd.isna(vol_ma20) and vol > vol_ma20:
+        score += 8
 
-    day = 0
-    day += 30 if rvol_now >= 1.8 else 15 if rvol_now >= 1.2 else 0
-    day += 20 if abs(chg_pct) >= 2 else 8 if abs(chg_pct) >= 1 else 0
-    day += 20 if macd_now > sig_now and hist_now > 0 else 5
-    day += 15 if 52 <= rsi_now <= 75 else 6
-    day += 15 if above_ma20 else 4
+    if not pd.isna(support) and close_ <= support * 1.08:
+        score += 8
 
-    bandar = 0
-    bandar += 30 if acc_status == "Accumulation" else 0
-    bandar += 20 if cmf_now > 0.08 else 10 if cmf_now > 0 else 0
-    bandar += 20 if obv_up else 5
-    bandar += 15 if rvol_now > 1.2 else 5
-    bandar += 15 if above_ma20 else 5
+    if not pd.isna(ema9) and close_ >= ema9 * 0.985:
+        score += 8
 
-    ara = 0
-    ara += 28 if chg_pct >= 4 else 10 if chg_pct >= 2 else 0
-    ara += 22 if rvol_now >= 2 else 10 if rvol_now >= 1.4 else 0
-    ara += 15 if rsi_now >= 60 else 5
-    ara += 15 if macd_now > sig_now and hist_now > 0 else 4
-    ara += 20 if acc_status == "Accumulation" else 5
+    if not pd.isna(wick):
+        if wick < 20:
+            score += 8
+        elif wick < 35:
+            score += 4
+        elif wick >= 45:
+            score -= 8
+
+    return max(min(score, 100), 0)
+
+# =========================================================
+# ROW BUILDER
+# =========================================================
+def build_row(symbol: str, daily_df: pd.DataFrame):
+    df = calc_indicators(daily_df)
+    if len(df) < 40:
+        return None
+
+    close_ = latest(df["Close"])
+    prev_close = float(df["Close"].iloc[-2]) if len(df) > 1 else close_
+    gain = ((close_ - prev_close) / prev_close * 100) if prev_close else 0.0
+
+    rsi = latest(df["RSI"])
+    macd = latest(df["MACD"])
+    macd_signal = latest(df["MACD_SIGNAL"])
+    macd_hist = latest(df["MACD_HIST"])
+    prev_macd_hist = float(df["MACD_HIST"].iloc[-2]) if len(df) > 1 and not pd.isna(df["MACD_HIST"].iloc[-2]) else np.nan
+
+    vol = latest(df["Volume"])
+    vol_ma5 = latest(df["VOL_MA5"])
+    vol_ma20 = latest(df["VOL_MA20"])
+
+    support = latest(df["SUPPORT20"])
+    resistance = latest(df["RESIST20"])
+    ema9 = latest(df["EMA9"])
+    ma20 = latest(df["MA20"])
+    ma50 = latest(df["MA50"])
+    atr = latest(df["ATR14"])
+    wick = latest(df["WICK_PCT"])
+
+    # proxy lower band sederhana dari MA20 - 2*std20 kalau mau
+    std20 = latest(df["Close"].rolling(20).std())
+    bb_lower_proxy = ma20 - (2 * std20) if not pd.isna(ma20) and not pd.isna(std20) else np.nan
+
+    rvol = (vol / vol_ma20 * 100) if not pd.isna(vol_ma20) and vol_ma20 > 0 else np.nan
+
+    entry = round(max(close_, ema9)) if not pd.isna(ema9) else round(close_)
+    tp = round(close_ + (atr * 1.2)) if not pd.isna(atr) else round(close_ * 1.04)
+    sl = round(close_ - (atr * 0.8)) if not pd.isna(atr) else round(close_ * 0.97)
+
+    profit = ((close_ - entry) / entry * 100) if entry else 0.0
+    to_tp = ((tp - close_) / close_ * 100) if close_ else 0.0
+    val = close_ * vol if not pd.isna(close_) and not pd.isna(vol) else np.nan
+
+    signal_label = get_rebound_signal(
+        close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+        vol, vol_ma5, support, bb_lower_proxy, wick, ema9
+    )
+
+    action_label = get_rebound_action(signal_label, close_, entry)
+
+    rebound_score = compute_rebound_score(
+        close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+        vol, vol_ma5, vol_ma20, support, wick, ema9
+    )
+
+    trend = "NAIK" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ > ma20 > ma50 else \
+            "TURUN" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ < ma20 < ma50 else \
+            "NETRAL"
 
     return {
-        "BSJP Score": int(min(100, bsjp)),
-        "Swing Score": int(min(100, swing)),
-        "Day Score": int(min(100, day)),
-        "Bandar Score": int(min(100, bandar)),
-        "ARA Score": int(min(100, ara)),
+        "symbol": symbol.replace(".JK", ""),
+        "full_symbol": symbol,
+        "harga": close_,
+        "gain": gain,
+        "rsi": rsi,
+        "macd": macd,
+        "macd_signal": macd_signal,
+        "macd_hist": macd_hist,
+        "rvol": rvol,
+        "wick": wick,
+        "entry": entry,
+        "tp": tp,
+        "sl": sl,
+        "profit": profit,
+        "to_tp": to_tp,
+        "value": val,
+        "support": support,
+        "resistance": resistance,
+        "ema9": ema9,
+        "trend": trend,
+        "aksi": action_label,
+        "sinyal": signal_label,
+        "score_rebound": rebound_score,
+        "daily_df": df
     }
 
-
-@st.cache_data(ttl=60, show_spinner=False)
-def build_top_screener(_tickers: list[str]) -> pd.DataFrame:
+@st.cache_data(ttl=300)
+def run_oversold_scanner(symbols, period, interval, max_price):
     rows = []
-    scan_list = PRIORITY_TICKERS
-    for ticker in scan_list:
+    for symbol in symbols:
         try:
-            df = load_stock_data(ticker, period="1y", interval="1d")
-            if df.empty or len(df) < 80:
+            daily = get_ohlcv(symbol, period=period, interval=interval)
+            if daily.empty:
                 continue
-            last_val = pd.to_numeric(df["Close"].iloc[-1], errors="coerce")
-            prev_val = pd.to_numeric(df["Close"].iloc[-2], errors="coerce")
-            vol_val = pd.to_numeric(df["Volume"].iloc[-1], errors="coerce")
-            if pd.isna(last_val) or pd.isna(prev_val):
-                continue
-            last = float(last_val)
-            prev = float(prev_val)
-            vol = float(vol_val) if not pd.isna(vol_val) else 0.0
-            meta = load_fast_info(ticker)
-            score, details = score_stock(df)
-            if not details:
-                continue
-            change = last - prev
-            pct = (change / prev * 100) if prev else 0.0
-            extra = compute_screener_logic(df, score, details)
-            rows.append({
-                "Ticker": ticker,
-                "Name": meta.get("name", ticker),
-                "Sector": meta.get("sector", "-"),
-                "Price": last,
-                "Change": change,
-                "Pct": pct,
-                "Score": score,
-                "ScoreLabel": details["label"],
-                "Volume": vol,
-                "ValueTraded": last * vol,
-                "MarketCap": meta.get("market_cap", np.nan),
-                "RSI": details["rsi"],
-                "RVOL": details["rvol"],
-                "CMF": details["cmf"],
-                "Trend": details["trend"],
-                "AccStatus": details["accumulation"],
-                "SignalRec": details["signal"],
-                **extra,
-            })
+            row = build_row(symbol, daily)
+            if row is not None and not pd.isna(row["harga"]) and row["harga"] <= max_price:
+                rows.append(row)
         except Exception:
             continue
-    out = pd.DataFrame(rows)
-    if out.empty:
-        return pd.DataFrame([
-            {
-                "Ticker": "BBCA",
-                "Name": "Bank Central Asia Tbk.",
-                "Sector": "Perbankan",
-                "Price": 0.0,
-                "Change": 0.0,
-                "Pct": 0.0,
-                "Score": 0,
-                "ScoreLabel": "No Data",
-                "Volume": 0.0,
-                "ValueTraded": 0.0,
-                "MarketCap": np.nan,
-                "RSI": 50.0,
-                "RVOL": 1.0,
-                "CMF": 0.0,
-                "Trend": "NETRAL",
-                "AccStatus": "Neutral",
-                "SignalRec": "WAIT",
-                "BSJP Score": 0,
-                "Swing Score": 0,
-                "Day Score": 0,
-                "Bandar Score": 0,
-                "ARA Score": 0,
-                "Rank": 1,
-            }
-        ])
-    out = out.sort_values(["Score", "Pct"], ascending=[False, False]).reset_index(drop=True)
-    out["Rank"] = np.arange(1, len(out) + 1)
-    return out
 
+    if not rows:
+        return pd.DataFrame()
 
-# =========================
-# PLOTS
-# =========================
-def mini_line(series: pd.Series, color: str, height: int = 85) -> go.Figure:
+    return pd.DataFrame(rows).sort_values(
+        ["score_rebound", "rsi", "rvol", "gain"],
+        ascending=[False, True, False, False]
+    ).reset_index(drop=True)
+
+# =========================================================
+# CELL COLORS
+# =========================================================
+def bg_score(v):
+    if pd.isna(v):
+        return "#243244"
+    if v >= 80:
+        return "#9333ea"
+    if v >= 65:
+        return "#16a34a"
+    if v >= 50:
+        return "#2563eb"
+    return "#374151"
+
+def bg_signal(v):
+    mapping = {
+        "REBOUND KUAT": "#7e22ce",
+        "REBOUND SIAP": "#16a34a",
+        "PANTAU REBOUND": "#2563eb",
+        "TUNGGU": "#111827"
+    }
+    return mapping.get(v, "#334155")
+
+def bg_action(v):
+    mapping = {
+        "BELI BERTAHAP": "#7c3aed",
+        "PANTAU DEKAT": "#1d4ed8",
+        "TUNGGU KONFIRMASI": "#b45309",
+        "PANTAU": "#334155",
+        "TUNGGU": "#111827"
+    }
+    return mapping.get(v, "#334155")
+
+def bg_rsi(v):
+    if pd.isna(v):
+        return "#243244"
+    if v <= 28:
+        return "#9333ea"
+    if v <= 35:
+        return "#16a34a"
+    if v <= 40:
+        return "#2563eb"
+    return "#374151"
+
+def bg_gain(v):
+    if pd.isna(v):
+        return "#243244"
+    if v > 2:
+        return "#10b981"
+    if v > 0:
+        return "#15803d"
+    if v > -2:
+        return "#dc2626"
+    return "#991b1b"
+
+def bg_rvol(v):
+    if pd.isna(v):
+        return "#243244"
+    if v >= 200:
+        return "#9333ea"
+    if v >= 130:
+        return "#f97316"
+    if v >= 100:
+        return "#2563eb"
+    return "#374151"
+
+def bg_trend(v):
+    mapping = {"NAIK": "#16a34a", "TURUN": "#dc2626", "NETRAL": "#6b7280"}
+    return mapping.get(v, "#334155")
+
+# =========================================================
+# HTML TABLE
+# =========================================================
+def make_html_table(df: pd.DataFrame, title: str, sub: str):
+    html = textwrap.dedent(f"""
+    <html>
+    <head>
+    <style>
+    body {{
+        margin: 0;
+        background: #07111b;
+        color: white;
+        font-family: Arial, Helvetica, sans-serif;
+    }}
+    .screen-box {{
+        border: 1px solid #17324d;
+        border-radius: 10px;
+        padding: 8px;
+        background: #07111b;
+        box-sizing: border-box;
+        width: 100%;
+    }}
+    .screener-title {{
+        text-align: center;
+        font-weight: 800;
+        font-size: 13px;
+        color: #eaf2ff;
+        margin-bottom: 4px;
+        letter-spacing: 0.3px;
+    }}
+    .screener-sub {{
+        text-align: center;
+        color: #9fb5d1;
+        font-size: 10px;
+        margin-bottom: 6px;
+    }}
+    .table-wrap {{
+        width: 100%;
+        overflow-x: auto;
+    }}
+    .custom-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        min-width: 1450px;
+    }}
+    .custom-table th {{
+        background: #184574;
+        color: #ffffff;
+        border: 1px solid #2a527b;
+        padding: 5px 3px;
+        text-align: center;
+        white-space: nowrap;
+        font-weight: 800;
+    }}
+    .custom-table td {{
+        border: 1px solid #20364e;
+        padding: 4px 3px;
+        text-align: center;
+        white-space: nowrap;
+        font-weight: 700;
+    }}
+    .footer-line {{
+        margin-top: 6px;
+        text-align: center;
+        color: #ffd451;
+        font-size: 10px;
+        font-weight: 700;
+    }}
+    </style>
+    </head>
+    <body>
+    <div class="screen-box">
+      <div class="screener-title">{title}</div>
+      <div class="screener-sub">{sub}</div>
+      <div class="table-wrap">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>RANK</th>
+            <th>EMITEN</th>
+            <th>SKOR REBOUND</th>
+            <th>SINYAL</th>
+            <th>AKSI</th>
+            <th>HARGA</th>
+            <th>KENAIKAN</th>
+            <th>RSI</th>
+            <th>RVOL</th>
+            <th>WICK</th>
+            <th>AREA BELI</th>
+            <th>TP</th>
+            <th>BATAS RUGI</th>
+            <th>% KE TP</th>
+            <th>NILAI</th>
+            <th>TREND</th>
+          </tr>
+        </thead>
+        <tbody>
+    """)
+
+    for i, (_, row) in enumerate(df.iterrows(), start=1):
+        html += f"""
+        <tr>
+            <td style="background:#0f172a;color:#fff;">{i}</td>
+            <td style="background:#1d4ed8;color:#fff;">{row['symbol']}</td>
+            <td style="background:{bg_score(row['score_rebound'])};color:#fff;">{int(row['score_rebound'])}</td>
+            <td style="background:{bg_signal(row['sinyal'])};color:#fff;">{row['sinyal']}</td>
+            <td style="background:{bg_action(row['aksi'])};color:#fff;">{row['aksi']}</td>
+            <td style="background:#2563eb;color:#fff;">{fmt_price(row['harga'])}</td>
+            <td style="background:{bg_gain(row['gain'])};color:#fff;">{fmt_pct(row['gain'])}</td>
+            <td style="background:{bg_rsi(row['rsi'])};color:#fff;">{rsi_text(row['rsi'])}</td>
+            <td style="background:{bg_rvol(row['rvol'])};color:#fff;">{fmt_pct(row['rvol'])}</td>
+            <td style="background:#334155;color:#fff;">{fmt_pct(row['wick'])}</td>
+            <td style="background:#1d4ed8;color:#fff;">{fmt_price(row['entry'])}</td>
+            <td style="background:#16a34a;color:#fff;">{fmt_price(row['tp'])}</td>
+            <td style="background:#b91c1c;color:#fff;">{fmt_price(row['sl'])}</td>
+            <td style="background:#0f766e;color:#fff;">{fmt_pct(row['to_tp'])}</td>
+            <td style="background:#183b69;color:#fff;">{human_value(row['value'])}</td>
+            <td style="background:{bg_trend(row['trend'])};color:#fff;">{row['trend']}</td>
+        </tr>
+        """
+
+    html += """
+        </tbody>
+      </table>
+      </div>
+      <div class="footer-line">AUTO SCAN OVERSOLD REBOUND | RSI rendah + pantulan naik + MACD membaik + volume aktif + candle sehat</div>
+    </div>
+    </body>
+    </html>
+    """
+    return html
+
+# =========================================================
+# CHART DETAIL
+# =========================================================
+def show_detail_chart(df: pd.DataFrame, symbol_name: str):
+    st.subheader(f"Chart Detail: {symbol_name}")
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=series.index, y=series.values, mode="lines", line=dict(color=color, width=2)))
-    fig.update_layout(height=height, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis=dict(visible=False), yaxis=dict(visible=False), showlegend=False)
-    return fig
-
-
-def price_chart(df: pd.DataFrame, ticker: str) -> go.Figure:
-    ma20 = df["Close"].rolling(20).mean()
-    ma50 = df["Close"].rolling(50).mean()
-    ma200 = df["Close"].rolling(200).mean()
-    _, bb_up, bb_low = calculate_bollinger(df)
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name=ticker, increasing_line_color="#00ff9c", decreasing_line_color="#ff4d4f"))
-    fig.add_trace(go.Scatter(x=df.index, y=ma20, name="MA20", line=dict(color="#ffb347", width=1.8)))
-    fig.add_trace(go.Scatter(x=df.index, y=ma50, name="MA50", line=dict(color="#4ea1ff", width=1.8)))
-    fig.add_trace(go.Scatter(x=df.index, y=ma200, name="MA200", line=dict(color="#9b6dff", width=1.8)))
-    fig.add_trace(go.Scatter(x=df.index, y=bb_up, name="BB Upper", line=dict(color="rgba(147,164,191,.7)", width=1, dash="dot")))
-    fig.add_trace(go.Scatter(x=df.index, y=bb_low, name="BB Lower", line=dict(color="rgba(147,164,191,.7)", width=1, dash="dot"), fill="tonexty", fillcolor="rgba(147,164,191,.05)"))
-    fig.update_layout(height=470, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e6eefc"), xaxis_rangeslider_visible=False, legend=dict(orientation="h"))
-    return fig
-
-
-def rsi_chart(df: pd.DataFrame) -> go.Figure:
-    rsi = calculate_rsi(df)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=rsi, mode="lines", line=dict(color="#9b6dff", width=2), name="RSI"))
-    fig.add_hline(y=70, line_dash="dot", line_color="rgba(255,77,79,.7)")
-    fig.add_hline(y=30, line_dash="dot", line_color="rgba(0,255,156,.7)")
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[0, 100]), font=dict(color="#e6eefc"), showlegend=False)
-    return fig
-
-
-def macd_chart(df: pd.DataFrame) -> go.Figure:
-    macd, sig, hist = calculate_macd(df)
-    colors = np.where(hist >= 0, "rgba(0,255,156,.75)", "rgba(255,77,79,.75)")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=df.index, y=hist, marker_color=colors, name="Hist"))
-    fig.add_trace(go.Scatter(x=df.index, y=macd, mode="lines", line=dict(color="#4ea1ff", width=2), name="MACD"))
-    fig.add_trace(go.Scatter(x=df.index, y=sig, mode="lines", line=dict(color="#ffb347", width=2), name="Signal"))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e6eefc"))
-    return fig
-
-
-def volume_chart(df: pd.DataFrame) -> go.Figure:
-    ma = df["Volume"].rolling(20).mean()
-    colors = np.where(df["Close"].diff().fillna(0) >= 0, "rgba(0,255,156,.75)", "rgba(255,77,79,.75)")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], marker_color=colors, name="Volume"))
-    fig.add_trace(go.Scatter(x=df.index, y=ma, mode="lines", line=dict(color="#4ea1ff", width=2), name="Vol MA20"))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e6eefc"))
-    return fig
-
-
-def ad_chart(df: pd.DataFrame) -> go.Figure:
-    ad = calculate_ad_line(df)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=ad, mode="lines", line=dict(color="#4ade80", width=2), name="A/D Line"))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e6eefc"), showlegend=False)
-    return fig
-
-
-# =========================
-# UI
-# =========================
-def render_sidebar(screener: pd.DataFrame):
-    with st.sidebar:
-        st.markdown("## STREAMLIS PRO")
-        ihsg = load_index_data(MARKET_SYMBOLS["IHSG"])
-        if not ihsg.empty and len(ihsg) >= 2:
-            close_series = ihsg["Close"].dropna()
-            if len(close_series) >= 2:
-                last = float(close_series.iloc[-1])
-                prev = float(close_series.iloc[-2])
-                pct = (last - prev) / prev * 100 if prev else 0
-                cls = "up" if pct >= 0 else "down"
-                st.markdown(f'<div class="panel"><div class="metric-title">Market IHSG</div><div class="metric-value">{fmt_num(last, 2)}</div><div class="{cls}">{pct:+.2f}%</div></div>', unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        menu_options = ["Dashboard", "Watchlist > 50", "BSJP Screener", "Swing Trade Screener", "Day Trade Screener", "Bandarmology Screener", "ARA Screener"]
-        active_menu = st.radio("Menu", menu_options, index=menu_options.index(st.session_state.get("active_menu", "Dashboard")), key="sidebar_menu_radio")
-        st.session_state["active_menu"] = active_menu
-        st.markdown("---")
-        st.caption("Watchlist score > 50")
-        wl = screener[screener["Score"] > 50][["Ticker", "Score"]].sort_values("Score", ascending=False)
-        for _, row in wl.head(18).iterrows():
-            if st.button(f'{row["Ticker"]}  |  {int(row["Score"])}', key=f'sb_{row["Ticker"]}'):
-                st.session_state["selected_ticker"] = row["Ticker"]
-                st.rerun()
-
-
-def render_top_market_bar():
-    cols = st.columns(len(MARKET_SYMBOLS) + 1)
-    for i, (name, symbol) in enumerate(MARKET_SYMBOLS.items()):
-        with cols[i]:
-            df = load_index_data(symbol)
-            if df.empty or len(df) < 2:
-                st.markdown(f'<div class="mini-panel"><div class="metric-title">{name}</div><div class="metric-value">-</div></div>', unsafe_allow_html=True)
-                continue
-            close_series = df["Close"].dropna()
-            if len(close_series) < 2:
-                st.markdown(f'<div class="mini-panel"><div class="metric-title">{name}</div><div class="metric-value">-</div></div>', unsafe_allow_html=True)
-                continue
-            last = float(close_series.iloc[-1])
-            prev = float(close_series.iloc[-2])
-            pct = (last - prev) / prev * 100 if prev else 0.0
-            cls = "up" if pct >= 0 else "down"
-            st.markdown(f'<div class="mini-panel"><div class="metric-title">{name}</div><div class="metric-value">{fmt_num(last,2)}</div><div class="{cls}">{pct:+.2f}%</div></div>', unsafe_allow_html=True)
-            st.plotly_chart(mini_line(close_series.tail(30), "#00ff9c" if pct >= 0 else "#ff4d4f", 55), use_container_width=True, config={"displayModeBar": False})
-    with cols[-1]:
-        now = datetime.now()
-        st.markdown(f'<div class="mini-panel"><div class="metric-title">Waktu</div><div class="metric-value">{now.strftime("%H:%M:%S")}</div><div class="small-note">{now.strftime("%d %b %Y")}</div></div>', unsafe_allow_html=True)
-
-
-def render_ticker_search_combined(screener: pd.DataFrame):
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.subheader("SEARCH EMITEN")
-    master_options = build_master_search_options()
-    current = st.session_state.get("selected_ticker", "BBCA")
-    default_idx = 0
-    matched_idx = master_options.index[master_options["Ticker"] == current].tolist()
-    if matched_idx:
-        default_idx = matched_idx[0]
-    selected_label = st.selectbox("Cari dari semua ticker IDX", master_options["Label"].tolist(), index=default_idx if default_idx < len(master_options) else 0)
-    c1, c2 = st.columns([3, 1.1])
-    with c1:
-        manual = st.text_input("Atau ketik ticker / nama emiten", value=current, placeholder="Contoh: BBCA, BMRI, TLKM, PGEO, Bank Mandiri, Telkom")
-    with c2:
-        open_btn = st.button("Open Ticker", use_container_width=True)
-    selected_from_box = master_options.loc[master_options["Label"] == selected_label, "Ticker"].iloc[0]
-    if selected_from_box != current:
-        st.session_state["selected_ticker"] = selected_from_box
-        st.rerun()
-    if open_btn:
-        typed = manual.strip().upper().replace(".JK", "")
-        alias_map = {
-            "MANDIRI": "BMRI", "BANK MANDIRI": "BMRI", "BCA": "BBCA", "BANK CENTRAL ASIA": "BBCA",
-            "BRI": "BBRI", "BANK RAKYAT INDONESIA": "BBRI", "BNI": "BBNI", "BANK NEGARA INDONESIA": "BBNI",
-            "TELKOM": "TLKM", "TELKOM INDONESIA": "TLKM", "ASTRA": "ASII", "GOTO": "GOTO",
-        }
-        if typed in alias_map:
-            typed = alias_map[typed]
-        if typed in ALL_IDX_TICKERS:
-            st.session_state["selected_ticker"] = typed
-            st.rerun()
-        name_match = master_options[master_options["Ticker"].str.upper().str.contains(typed, na=False) | master_options["Name"].str.upper().str.contains(typed, na=False)]
-        if not name_match.empty:
-            st.session_state["selected_ticker"] = name_match.iloc[0]["Ticker"]
-            st.rerun()
-        st.warning(f"Ticker / nama emiten '{manual}' tidak ditemukan di master IDX.")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
-def render_top_cards(top_df: pd.DataFrame):
-    if top_df.empty:
-        st.warning("Tidak ada data screener.")
-        return
-    st.markdown('<div class="title-main">Top Emiten</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle-main">Klik ticker untuk memunculkan detail saham, score, dan screener rekomendasinya</div>', unsafe_allow_html=True)
-    cols = st.columns(3)
-    for idx, (_, row) in enumerate(top_df.head(3).iterrows()):
-        with cols[idx]:
-            st.markdown('<div class="panel">', unsafe_allow_html=True)
-            c1, c2, c3 = st.columns([0.6, 2.5, 1.2])
-            with c1:
-                st.markdown(f"### {int(row['Rank'])}")
-            with c2:
-                if st.button(row["Ticker"], key=f'card_{row["Ticker"]}'):
-                    st.session_state["selected_ticker"] = row["Ticker"]
-                    st.rerun()
-                st.caption(row["Name"])
-            with c3:
-                st.markdown(f'<div class="score-box"><div class="score-num">{int(row["Score"])} </div><div class="score-label">{row["ScoreLabel"]}</div></div>', unsafe_allow_html=True)
-            cls = "up" if row["Pct"] >= 0 else "down"
-            st.markdown(f'<div class="metric-value">{fmt_num(row["Price"],0)}</div><div class="{cls}">{row["Change"]:+.0f} ({row["Pct"]:+.2f}%)</div>', unsafe_allow_html=True)
-            st.markdown(f'''<div class="kpi-grid"><div class="kpi-cell"><div class="metric-title">Sektor</div><div>{row['Sector']}</div></div><div class="kpi-cell"><div class="metric-title">MCap</div><div>{fmt_short(row['MarketCap'])}</div></div><div class="kpi-cell"><div class="metric-title">Volume</div><div>{fmt_short(row['Volume'])}</div></div><div class="kpi-cell"><div class="metric-title">Value</div><div>{fmt_short(row['ValueTraded'])}</div></div></div>''', unsafe_allow_html=True)
-            df = load_stock_data(row["Ticker"], period="6mo", interval="1d")
-            if not df.empty:
-                st.caption(f'RSI {row["RSI"]:.2f}')
-                st.plotly_chart(mini_line(calculate_rsi(df).tail(60), "#9b6dff"), use_container_width=True, config={"displayModeBar": False})
-                macd, _, _ = calculate_macd(df)
-                st.caption(f'MACD {macd.iloc[-1]:.2f}')
-                st.plotly_chart(mini_line(macd.tail(60), "#4ea1ff"), use_container_width=True, config={"displayModeBar": False})
-                st.caption(f'Akumulasi / Distribusi {row["AccStatus"]}')
-                st.plotly_chart(mini_line(calculate_ad_line(df).tail(60), "#4ade80"), use_container_width=True, config={"displayModeBar": False})
-            if st.button(f'Detail {row["Ticker"]}', key=f'detail_{row["Ticker"]}'):
-                st.session_state["selected_ticker"] = row["Ticker"]
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-
-def render_rank_table(title: str, df: pd.DataFrame, score_col: str, key_prefix: str):
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.subheader(title)
-    show = df.sort_values(score_col, ascending=False).head(12).copy() if not df.empty else df
-    if show.empty:
-        st.write("Tidak ada data.")
-    else:
-        for _, row in show.iterrows():
-            cols = st.columns([1.4, 1, 1.2])
-            with cols[0]:
-                if st.button(row["Ticker"], key=f'{key_prefix}_{row["Ticker"]}'):
-                    st.session_state["selected_ticker"] = row["Ticker"]
-                    st.rerun()
-            with cols[1]:
-                st.write(f'{int(row[score_col])}')
-            with cols[2]:
-                st.markdown(f'<span class="{chip_class(row["SignalRec"])}">{row["SignalRec"]}</span>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
-def render_bsjp_main_table(screener: pd.DataFrame):
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="title-main">BSJP Screener Table</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle-main">Klik baris untuk membuka detail saham</div>', unsafe_allow_html=True)
-
-    if screener is None or screener.empty:
-        table_df = pd.DataFrame({
-            "EMITEN": ["BBCA", "BMRI", "TLKM"],
-            "GAIN": [1.2, 0.8, 1.5],
-            "WICK": [28.1, 31.4, 22.6],
-            "AKSI": ["SIAP BELI", "WATCH", "AT ENTRY"],
-            "SINYAL": ["SUPER", "AKUM", "ON TRACK"],
-            "RVOL": [145.0, 118.0, 132.0],
-            "ENTRY": [9200, 6100, 2800],
-            "NOW": [9380, 6230, 2860],
-            "TP": [9700, 6500, 3010],
-            "SL": [9050, 5950, 2760],
-            "PROFIT": [5.0, 4.3, 5.2],
-            "%TO TP": [3.4, 4.3, 5.2],
-            "RSI SIG": ["UP", "UP", "UP"],
-            "RSI 5M": [66.4, 58.2, 61.8],
-            "VAL": ["1.2B", "980M", "750M"],
-            "FASE": ["AKUM", "AKUM", "AKUM"],
-            "TREND": ["BULL", "BULL", "BULL"],
-            "BSJP SCORE": [92, 84, 80],
-        })
-    else:
-        df = screener.copy().sort_values("BSJP Score", ascending=False).reset_index(drop=True)
-        for col in ["Price", "Pct", "RSI", "RVOL", "ValueTraded", "BSJP Score"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        df["Price"] = df["Price"].fillna(0)
-        df["Pct"] = df["Pct"].fillna(0)
-        df["RSI"] = df["RSI"].fillna(50)
-        df["RVOL"] = df["RVOL"].fillna(1.0)
-        df["ValueTraded"] = df["ValueTraded"].fillna(0)
-        df["BSJP Score"] = df["BSJP Score"].fillna(0)
-        df["AccStatus"] = df["AccStatus"].fillna("Neutral")
-        df["Trend"] = df["Trend"].fillna("NETRAL")
-
-        def aksi_label(score):
-            return "SIAP BELI" if score >= 85 else "AT ENTRY" if score >= 75 else "WATCH"
-
-        def sinyal_label(acc, score):
-            if acc == "Accumulation" and score >= 80:
-                return "SUPER"
-            if acc == "Accumulation":
-                return "AKUM"
-            if score >= 70:
-                return "ON TRACK"
-            return "WAIT"
-
-        def fase_label(acc):
-            return "AKUM" if acc == "Accumulation" else "DISTRIBUSI" if acc == "Distribution" else "NETRAL"
-
-        def trend_label(trend):
-            return "BULL" if trend == "Uptrend" else "BEAR" if trend == "Downtrend" else "NETRAL"
-
-        table_df = pd.DataFrame({
-            "EMITEN": df["Ticker"],
-            "GAIN": df["Pct"].round(1),
-            "WICK": np.minimum(np.maximum((100 - df["RSI"]).abs(), 5), 100).round(1),
-            "AKSI": df["BSJP Score"].apply(aksi_label),
-            "SINYAL": [sinyal_label(a, s) for a, s in zip(df["AccStatus"], df["BSJP Score"])],
-            "RVOL": (df["RVOL"] * 100).round(1),
-            "ENTRY": (df["Price"] * 0.98).round(0).fillna(0).astype(int),
-            "NOW": df["Price"].round(0).fillna(0).astype(int),
-            "TP": (df["Price"] * 1.05).round(0).fillna(0).astype(int),
-            "SL": (df["Price"] * 0.97).round(0).fillna(0).astype(int),
-            "PROFIT": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
-            "%TO TP": (((df["Price"] * 1.05 - df["Price"]) / df["Price"].replace(0, np.nan)) * 100).fillna(0).round(1),
-            "RSI SIG": np.where(df["RSI"] >= 50, "UP", "DOWN"),
-            "RSI 5M": df["RSI"].round(1),
-            "VAL": df["ValueTraded"].apply(fmt_short),
-            "FASE": df["AccStatus"].apply(fase_label),
-            "TREND": df["Trend"].apply(trend_label),
-            "BSJP SCORE": df["BSJP Score"].astype(int),
-        })
-
-    if table_df.empty:
-        st.error("Table BSJP kosong.")
-        st.markdown('</div>', unsafe_allow_html=True)
-        return
-
-    st.caption(f"Jumlah data BSJP: {len(table_df)}")
-
-    selected_ticker = st.selectbox(
-        "Pilih ticker",
-        table_df["EMITEN"].tolist(),
-        index=table_df["EMITEN"].tolist().index(st.session_state.get("selected_ticker")) if st.session_state.get("selected_ticker") in table_df["EMITEN"].tolist() else 0,
-        key="bsjp_select_fallback",
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df["Open"],
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"],
+        name="Candlestick"
+    ))
+    fig.add_trace(go.Scatter(x=df.index, y=df["EMA9"], mode="lines", name="EMA9"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["MA20"], mode="lines", name="MA20"))
+    fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], mode="lines", name="MA50"))
+    fig.update_layout(
+        height=520,
+        template="plotly_dark",
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=20, r=20, t=40, b=20)
     )
-    if selected_ticker != st.session_state.get("selected_ticker"):
-        st.session_state["selected_ticker"] = selected_ticker
-        st.rerun()
+    st.plotly_chart(fig, use_container_width=True)
 
-    aggrid_rendered = False
-    try:
-        gb = GridOptionsBuilder.from_dataframe(table_df)
-        gb.configure_default_column(sortable=True, filter=True, resizable=True)
-        gb.configure_selection(selection_mode="single", use_checkbox=False)
-        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
-        gb.configure_grid_options(rowHeight=36, headerHeight=40)
+# =========================================================
+# HEADER
+# =========================================================
+st.title("AUTO SCAN OVERSOLD REBOUND")
+st.markdown(
+    '<div class="small-note">scan otomatis saham IDX untuk mencari saham oversold yang mulai memantul naik</div>',
+    unsafe_allow_html=True
+)
 
-        widths = {
-            "EMITEN": 95, "GAIN": 80, "WICK": 80, "AKSI": 120, "SINYAL": 120,
-            "RVOL": 90, "ENTRY": 90, "NOW": 90, "TP": 90, "SL": 90,
-            "PROFIT": 95, "%TO TP": 95, "RSI SIG": 90, "RSI 5M": 90,
-            "VAL": 110, "FASE": 110, "TREND": 95, "BSJP SCORE": 110,
-        }
-        for col, width in widths.items():
-            gb.configure_column(col, width=width, pinned="left" if col == "EMITEN" else None)
+# =========================================================
+# SIDEBAR
+# =========================================================
+with st.sidebar:
+    st.header("Pengaturan Scan")
 
-        grid_options = gb.build()
-        response = AgGrid(
-            table_df,
-            gridOptions=grid_options,
-            height=520,
-            theme="streamlit",
-            update_on=["selectionChanged"],
-            allow_unsafe_jscode=False,
-            fit_columns_on_grid_load=False,
-        )
-        selected_rows = response.get("selected_rows", [])
-        if selected_rows is not None and len(selected_rows) > 0:
-            row0 = selected_rows[0]
-            ticker = row0.get("EMITEN") if isinstance(row0, dict) else None
-            if ticker and ticker != st.session_state.get("selected_ticker"):
-                st.session_state["selected_ticker"] = ticker
-                st.rerun()
-        aggrid_rendered = True
-    except Exception as e:
-        st.warning(f"AG Grid gagal dirender: {e}")
+    preset = st.selectbox("Universe Scan", ["IDX 50", "IDX 100"], index=1)
+    symbols = SYMBOLS[:50] if preset == "IDX 50" else SYMBOLS[:100]
 
-    if not aggrid_rendered:
-        st.info("Menampilkan fallback table.")
-        st.dataframe(table_df, use_container_width=True, height=520)
+    period = st.selectbox("Periode", ["3mo", "6mo", "1y"], index=1)
+    interval = st.selectbox("Interval", ["1d", "1wk"], index=0)
+    max_price = st.number_input("Harga maksimal", min_value=50, max_value=20000, value=MAX_PRICE, step=50)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    auto_refresh = st.checkbox("Auto Refresh", value=False)
+    refresh_sec = st.selectbox("Refresh tiap", [60, 120, 300, 600], index=1)
 
+    run_btn = st.button("Jalankan Scanner", use_container_width=True)
 
-def render_stock_detail(selected_ticker: str, screener: pd.DataFrame):
-    tf_map = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "6M": ("6mo", "1d"), "1Y": ("1y", "1d"), "3Y": ("3y", "1wk")}
-    timeframe = st.radio("Timeframe", list(tf_map.keys()), horizontal=True, index=2)
-    period, interval = tf_map[timeframe]
-    df = load_stock_data(selected_ticker, period=period, interval=interval)
-    if df.empty:
-        st.error(f"Data {selected_ticker} tidak tersedia.")
-        return
+# =========================================================
+# RUN
+# =========================================================
+if run_btn or "scanner_df" not in st.session_state:
+    with st.spinner("Scanning saham oversold rebound..."):
+        st.session_state["scanner_df"] = run_oversold_scanner(symbols, period, interval, max_price)
+        st.session_state["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    row_df = screener[screener["Ticker"] == selected_ticker]
-    if row_df.empty:
-        base_df = load_stock_data(selected_ticker, period="1y", interval="1d")
-        if base_df.empty:
-            st.error(f"Ticker {selected_ticker} tidak ditemukan atau data tidak tersedia.")
-            return
-        shown_score, details = score_stock(base_df)
-        logic = compute_screener_logic(base_df, shown_score, details)
-        extra = {
-            "BSJP Score": logic["BSJP Score"],
-            "Swing Score": logic["Swing Score"],
-            "Day Score": logic["Day Score"],
-            "Bandar Score": logic["Bandar Score"],
-            "ARA Score": logic["ARA Score"],
-            "SignalRec": details.get("signal", "WAIT"),
-            "AccStatus": details.get("accumulation", "Neutral"),
-            "Trend": details.get("trend", "Downtrend"),
-        }
-    else:
-        row = row_df.iloc[0]
-        shown_score = int(row["Score"])
-        extra = {
-            "BSJP Score": int(row["BSJP Score"]),
-            "Swing Score": int(row["Swing Score"]),
-            "Day Score": int(row["Day Score"]),
-            "Bandar Score": int(row["Bandar Score"]),
-            "ARA Score": int(row["ARA Score"]),
-            "SignalRec": row["SignalRec"],
-            "AccStatus": row["AccStatus"],
-            "Trend": row["Trend"],
-        }
+scanner_df = st.session_state.get("scanner_df", pd.DataFrame())
 
-    meta = load_fast_info(selected_ticker)
-    last = float(df["Close"].iloc[-1])
-    prev = float(df["Close"].iloc[-2]) if len(df) > 1 else last
-    pct = (last - prev) / prev * 100 if prev else 0.0
-    cls = "up" if pct >= 0 else "down"
+if scanner_df.empty:
+    st.error("Belum ada saham yang lolos kriteria oversold rebound.")
+    st.stop()
 
-    st.markdown(f'<span class="pill">Selected Ticker: {selected_ticker}</span>', unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    h1, h2, h3 = st.columns([2.2, 1.2, 1.8])
-    with h1:
-        st.markdown(f'## {selected_ticker}')
-        st.caption(meta.get("name", selected_ticker))
-        st.markdown(f'<div class="metric-value">{fmt_num(last,0)}</div><div class="{cls}">{last - prev:+.0f} ({pct:+.2f}%)</div>', unsafe_allow_html=True)
-        st.write(meta.get("sector", "-"))
-    with h2:
-        status_cls = "status-open" if market_open_now() else "status-closed"
-        status_text = "MARKET OPEN" if market_open_now() else "MARKET CLOSED"
-        st.markdown(f'<span class="{status_cls}">{status_text}</span>', unsafe_allow_html=True)
-        st.markdown(f'<div class="small-note">Main Score</div><div class="score-num" style="font-size:1.5rem">{int(shown_score)}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="small-note">Signal</div><span class="{chip_class(extra["SignalRec"])}">{extra["SignalRec"]}</span>', unsafe_allow_html=True)
-    with h3:
-        sc_df = pd.DataFrame({"Screener": ["BSJP", "Swing", "Day Trade", "Bandarmology", "ARA"], "Point": [extra["BSJP Score"], extra["Swing Score"], extra["Day Score"], extra["Bandar Score"], extra["ARA Score"]]})
-        st.dataframe(sc_df, use_container_width=True, hide_index=True)
-    st.plotly_chart(price_chart(df, selected_ticker), use_container_width=True, config={"displayModeBar": False})
-    st.markdown('</div>', unsafe_allow_html=True)
+display_df = scanner_df.head(TOP_N).reset_index(drop=True)
+last_run = st.session_state.get("last_run", "-")
 
-    a, b = st.columns(2)
-    with a:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.subheader("RSI")
-        st.plotly_chart(rsi_chart(df), use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
-    with b:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.subheader("MACD")
-        st.plotly_chart(macd_chart(df), use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
+# =========================================================
+# METRICS
+# =========================================================
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("TOP PICK", display_df.iloc[0]["symbol"])
+m2.metric("SKOR TERATAS", int(display_df.iloc[0]["score_rebound"]))
+m3.metric("SINYAL TERATAS", display_df.iloc[0]["sinyal"])
+m4.metric("SCAN TERAKHIR", last_run)
 
-    c, d = st.columns(2)
-    with c:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.subheader("VOLUME")
-        st.plotly_chart(volume_chart(df), use_container_width=True, config={"displayModeBar": False})
-        vol_df = pd.DataFrame({"Metric": ["Daily Volume", "Vol MA20", "RVOL", "Value Traded"], "Value": [fmt_short(df["Volume"].iloc[-1]), fmt_short(df["Volume"].rolling(20).mean().iloc[-1]), f'{calculate_rvol(df).iloc[-1]:.2f}', fmt_short(last * df["Volume"].iloc[-1])]})
-        st.dataframe(vol_df, use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    with d:
-        st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.subheader("ACCUMULATION / DISTRIBUTION")
-        st.plotly_chart(ad_chart(df), use_container_width=True, config={"displayModeBar": False})
-        acc_df = pd.DataFrame({"Metric": ["CMF", "OBV Trend", "Status"], "Value": [f'{calculate_cmf(df).iloc[-1]:.2f}', 'Up' if calculate_obv(df).iloc[-1] > calculate_obv(df).iloc[-5] else 'Down', detect_accumulation(df)]})
-        st.dataframe(acc_df, use_container_width=True, hide_index=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+# =========================================================
+# TABLE
+# =========================================================
+st.subheader("Top Oversold Rebound")
+components.html(
+    make_html_table(
+        display_df,
+        "AUTO SCAN OVERSOLD REBOUND",
+        f"Update: {last_run} | Universe: {preset}"
+    ),
+    height=560,
+    scrolling=True
+)
 
+# =========================================================
+# RANKING
+# =========================================================
+st.subheader("Ranking Kandidat Rebound")
+rank_df = display_df[[
+    "symbol", "harga", "gain", "rsi", "rvol", "wick",
+    "trend", "sinyal", "aksi", "score_rebound"
+]].copy()
+rank_df.columns = [
+    "EMITEN", "HARGA", "KENAIKAN", "RSI", "RVOL", "WICK",
+    "TREND", "SINYAL", "AKSI", "SKOR REBOUND"
+]
+rank_df["HARGA"] = rank_df["HARGA"].apply(fmt_price)
+rank_df["KENAIKAN"] = rank_df["KENAIKAN"].apply(fmt_pct)
+rank_df["RVOL"] = rank_df["RVOL"].apply(fmt_pct)
+rank_df["RSI"] = rank_df["RSI"].apply(rsi_text)
+rank_df["WICK"] = rank_df["WICK"].apply(fmt_pct)
+st.dataframe(rank_df, use_container_width=True, height=360)
 
-def ensure_state(_screener: pd.DataFrame):
-    if "selected_ticker" not in st.session_state:
-        st.session_state["selected_ticker"] = "BBCA"
+# =========================================================
+# DETAIL
+# =========================================================
+selected_symbol = st.selectbox("Pilih saham untuk detail", display_df["full_symbol"].tolist())
+selected_row = display_df[display_df["full_symbol"] == selected_symbol].iloc[0]
+selected_df = selected_row["daily_df"]
 
+d1, d2, d3, d4, d5, d6 = st.columns(6)
+d1.metric("EMITEN", selected_row["symbol"])
+d2.metric("HARGA", fmt_price(selected_row["harga"]))
+d3.metric("KENAIKAN", fmt_pct(selected_row["gain"]))
+d4.metric("RSI", rsi_text(selected_row["rsi"]))
+d5.metric("RVOL", fmt_pct(selected_row["rvol"]))
+d6.metric("SKOR REBOUND", int(selected_row["score_rebound"]))
 
-def ensure_menu_state():
-    if "active_menu" not in st.session_state:
-        st.session_state["active_menu"] = "Dashboard"
+show_detail_chart(selected_df, selected_row["symbol"])
 
+st.subheader("Analisa Rebound")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.write(f"**Sinyal:** {selected_row['sinyal']}")
+    st.write(f"**Aksi:** {selected_row['aksi']}")
+    st.write(f"**Trend:** {selected_row['trend']}")
+with c2:
+    st.write(f"**Area Beli:** {fmt_price(selected_row['entry'])}")
+    st.write(f"**Target:** {fmt_price(selected_row['tp'])}")
+    st.write(f"**Batas Rugi:** {fmt_price(selected_row['sl'])}")
+with c3:
+    st.write(f"**RSI:** {rsi_text(selected_row['rsi'])}")
+    st.write(f"**RVOL:** {fmt_pct(selected_row['rvol'])}")
+    st.write(f"**Nilai:** {human_value(selected_row['value'])}")
 
-def main():
-    if st_autorefresh is not None:
-        st_autorefresh(interval=60_000, key="auto")
-
-    with st.spinner("Memuat screener IDX..."):
-        screener = build_top_screener(IDX_TICKERS)
-
-    ensure_state(screener)
-    ensure_menu_state()
-
-    render_sidebar(screener)
-    render_top_market_bar()
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    left, right = st.columns([4.9, 1.7], gap="large")
-
-    with left:
-        active_menu = st.session_state.get("active_menu", "Dashboard")
-        if active_menu == "Dashboard":
-            render_top_cards(screener)
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "BSJP Screener":
-            render_bsjp_main_table(screener)
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "Swing Trade Screener":
-            render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing_main")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "Day Trade Screener":
-            render_rank_table("Day Trade Screener", screener, "Day Score", "day_main")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "Bandarmology Screener":
-            render_rank_table("Bandarmology Screener", screener, "Bandar Score", "bandar_main")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "ARA Screener":
-            render_rank_table("ARA Screener", screener, "ARA Score", "ara_main")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-        elif active_menu == "Watchlist > 50":
-            render_rank_table("Watchlist Score > 50", screener[screener["Score"] > 50], "Score", "watch_main")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_stock_detail(st.session_state["selected_ticker"], screener)
-
-    with right:
-        render_ticker_search_combined(screener)
-        st.markdown("<br>", unsafe_allow_html=True)
-        active_menu = st.session_state.get("active_menu", "Dashboard")
-        if active_menu == "Dashboard":
-            render_rank_table("BSJP Screener", screener, "BSJP Score", "bsjp")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing")
-            st.markdown("<br>", unsafe_allow_html=True)
-            render_rank_table("Day Trade Screener", screener, "Day Score", "day")
-        elif active_menu == "Watchlist > 50":
-            render_rank_table("Watchlist Score > 50", screener[screener["Score"] > 50], "Score", "watch50")
-        elif active_menu == "BSJP Screener":
-            render_rank_table("BSJP Screener", screener, "BSJP Score", "bsjp")
-        elif active_menu == "Swing Trade Screener":
-            render_rank_table("Swing Trade Screener", screener, "Swing Score", "swing")
-        elif active_menu == "Day Trade Screener":
-            render_rank_table("Day Trade Screener", screener, "Day Score", "day")
-        elif active_menu == "Bandarmology Screener":
-            render_rank_table("Bandarmology Screener", screener, "Bandar Score", "bandar")
-        elif active_menu == "ARA Screener":
-            render_rank_table("ARA Screener", screener, "ARA Score", "ara")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    status = "MARKET OPEN" if market_open_now() else "MARKET CLOSED"
-    cls = "status-open" if market_open_now() else "status-closed"
-    st.markdown(f'<div class="panel"><span class="{cls}">{status}</span> <span class="small-note">&nbsp;&nbsp;Sidebar menampilkan IHSG dan watchlist score > 50 | Search membaca master ticker IDX | BSJP aman dengan fallback table</span></div>', unsafe_allow_html=True)
-
-
-if __name__ == "__main__":
-    main()
+# =========================================================
+# AUTO REFRESH
+# =========================================================
+if auto_refresh:
+    st.markdown(
+        f"""
+        <script>
+        setTimeout(function() {{
+            window.parent.location.reload();
+        }}, {refresh_sec * 1000});
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
