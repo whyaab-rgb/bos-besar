@@ -1,7 +1,5 @@
 streamlit
-yfinance
-plotly
 pandas
 numpy
-streamlit-autorefresh
-streamlit-aggrid
+yfinance
+plotly
