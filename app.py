@@ -8,7 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import yfinance as yf
 
-st.set_page_config(page_title="Auto Scan Oversold Rebound", layout="wide")
+st.set_page_config(page_title="Auto Scan Oversold Rebound Ketat", layout="wide")
 
 # =========================================================
 # WATCHLIST MASTER IDX
@@ -27,7 +27,7 @@ SYMBOLS = [
 ]
 
 TOP_N = 20
-MAX_PRICE = 5000
+MAX_PRICE = 1000
 
 # =========================================================
 # GLOBAL STYLE
@@ -164,30 +164,56 @@ def calc_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return x
 
 # =========================================================
-# OVERSOLD REBOUND ENGINE
+# OVERSOLD REBOUND ENGINE (STRICT)
 # =========================================================
-def get_rebound_signal(close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
-                       vol, vol_ma5, support, bb_lower_proxy, wick, ema9):
-    if any(pd.isna(v) for v in [close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist, vol, vol_ma5, wick]):
+def get_rebound_signal(
+    close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+    vol, vol_ma5, vol_ma20, support, bb_lower_proxy, wick, ema9
+):
+    if any(pd.isna(v) for v in [
+        close_, prev_close, rsi, macd, macd_signal, macd_hist,
+        prev_macd_hist, vol, vol_ma5, wick
+    ]):
         return "TUNGGU"
 
+    # hard oversold focus
     oversold_strict = rsi <= 30
     oversold_soft = rsi <= 35
+
     price_up = close_ > prev_close
     macd_improve = macd_hist > prev_macd_hist
     macd_cross_up = macd > macd_signal
-    vol_active = vol > vol_ma5 if not pd.isna(vol_ma5) else False
+    vol_active_5 = vol > vol_ma5 if not pd.isna(vol_ma5) else False
+    vol_active_20 = vol > vol_ma20 if not pd.isna(vol_ma20) else False
     wick_ok = wick < 35
-    near_support = False if pd.isna(support) else close_ <= support * 1.08
-    near_ema9 = False if pd.isna(ema9) else close_ >= ema9 * 0.985
-    near_lower_band = False if pd.isna(bb_lower_proxy) else close_ <= bb_lower_proxy * 1.03
 
-    if oversold_strict and price_up and macd_improve and vol_active and wick_ok and (near_support or near_lower_band) and near_ema9:
+    near_support = False if pd.isna(support) else close_ <= support * 1.08
+    near_lower_band = False if pd.isna(bb_lower_proxy) else close_ <= bb_lower_proxy * 1.04
+    near_ema9 = False if pd.isna(ema9) else close_ >= ema9 * 0.985
+
+    # strongest rebound: really oversold + early upward reaction
+    if (
+        oversold_strict
+        and price_up
+        and macd_improve
+        and (vol_active_5 or vol_active_20)
+        and wick_ok
+        and (near_support or near_lower_band)
+        and near_ema9
+    ):
         return "REBOUND KUAT"
 
-    if oversold_soft and price_up and macd_improve and wick_ok and (near_support or near_lower_band):
+    # good early rebound but still oversold
+    if (
+        oversold_soft
+        and price_up
+        and macd_improve
+        and wick_ok
+        and (near_support or near_lower_band)
+    ):
         return "REBOUND SIAP"
 
+    # only show if still oversold
     if oversold_soft and (macd_improve or macd_cross_up):
         return "PANTAU REBOUND"
 
@@ -204,19 +230,24 @@ def get_rebound_action(signal_label, close_, entry):
         return "PANTAU"
     return "TUNGGU"
 
-def compute_rebound_score(close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
-                          vol, vol_ma5, vol_ma20, support, wick, ema9):
+def compute_rebound_score(
+    close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
+    vol, vol_ma5, vol_ma20, support, wick, ema9
+):
     score = 0
 
+    # oversold gets biggest weight
     if not pd.isna(rsi):
-        if rsi <= 28:
-            score += 30
-        elif rsi <= 32:
-            score += 24
+        if rsi <= 26:
+            score += 38
+        elif rsi <= 30:
+            score += 32
+        elif rsi <= 33:
+            score += 26
         elif rsi <= 35:
             score += 18
-        elif rsi <= 40:
-            score += 8
+        else:
+            score -= 25  # punish non-oversold strongly
 
     if not pd.isna(close_) and not pd.isna(prev_close) and close_ > prev_close:
         score += 12
@@ -225,7 +256,7 @@ def compute_rebound_score(close_, prev_close, rsi, macd, macd_signal, macd_hist,
         score += 16
 
     if not pd.isna(macd) and not pd.isna(macd_signal) and macd > macd_signal:
-        score += 10
+        score += 8
 
     if not pd.isna(vol) and not pd.isna(vol_ma5) and vol > vol_ma5:
         score += 10
@@ -245,7 +276,7 @@ def compute_rebound_score(close_, prev_close, rsi, macd, macd_signal, macd_hist,
         elif wick < 35:
             score += 4
         elif wick >= 45:
-            score -= 8
+            score -= 10
 
     return max(min(score, 100), 0)
 
@@ -279,7 +310,6 @@ def build_row(symbol: str, daily_df: pd.DataFrame):
     atr = latest(df["ATR14"])
     wick = latest(df["WICK_PCT"])
 
-    # proxy lower band sederhana dari MA20 - 2*std20 kalau mau
     std20 = latest(df["Close"].rolling(20).std())
     bb_lower_proxy = ma20 - (2 * std20) if not pd.isna(ma20) and not pd.isna(std20) else np.nan
 
@@ -295,7 +325,7 @@ def build_row(symbol: str, daily_df: pd.DataFrame):
 
     signal_label = get_rebound_signal(
         close_, prev_close, rsi, macd, macd_signal, macd_hist, prev_macd_hist,
-        vol, vol_ma5, support, bb_lower_proxy, wick, ema9
+        vol, vol_ma5, vol_ma20, support, bb_lower_proxy, wick, ema9
     )
 
     action_label = get_rebound_action(signal_label, close_, entry)
@@ -305,9 +335,11 @@ def build_row(symbol: str, daily_df: pd.DataFrame):
         vol, vol_ma5, vol_ma20, support, wick, ema9
     )
 
-    trend = "NAIK" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ > ma20 > ma50 else \
-            "TURUN" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ < ma20 < ma50 else \
-            "NETRAL"
+    trend = (
+        "NAIK" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ > ma20 > ma50
+        else "TURUN" if not pd.isna(close_) and not pd.isna(ma20) and not pd.isna(ma50) and close_ < ma20 < ma50
+        else "NETRAL"
+    )
 
     return {
         "symbol": symbol.replace(".JK", ""),
@@ -339,20 +371,36 @@ def build_row(symbol: str, daily_df: pd.DataFrame):
 @st.cache_data(ttl=300)
 def run_oversold_scanner(symbols, period, interval, max_price):
     rows = []
+
     for symbol in symbols:
         try:
             daily = get_ohlcv(symbol, period=period, interval=interval)
             if daily.empty:
                 continue
+
             row = build_row(symbol, daily)
-            if row is not None and not pd.isna(row["harga"]) and row["harga"] <= max_price:
+            if row is None:
+                continue
+
+            # HARD FILTER:
+            # only under max price, only oversold zone, only rebound labels
+            if (
+                not pd.isna(row["harga"])
+                and row["harga"] <= max_price
+                and not pd.isna(row["rsi"])
+                and row["rsi"] <= 35
+                and row["sinyal"] in ["REBOUND KUAT", "REBOUND SIAP", "PANTAU REBOUND"]
+            ):
                 rows.append(row)
+
         except Exception:
             continue
 
     if not rows:
         return pd.DataFrame()
 
+    # prioritize strongest oversold first:
+    # higher score, lower RSI, better volume, then positive gain
     return pd.DataFrame(rows).sort_values(
         ["score_rebound", "rsi", "rvol", "gain"],
         ascending=[False, True, False, False]
@@ -396,9 +444,9 @@ def bg_rsi(v):
         return "#243244"
     if v <= 28:
         return "#9333ea"
-    if v <= 35:
+    if v <= 32:
         return "#16a34a"
-    if v <= 40:
+    if v <= 35:
         return "#2563eb"
     return "#374151"
 
@@ -554,7 +602,7 @@ def make_html_table(df: pd.DataFrame, title: str, sub: str):
         </tbody>
       </table>
       </div>
-      <div class="footer-line">AUTO SCAN OVERSOLD REBOUND | RSI rendah + pantulan naik + MACD membaik + volume aktif + candle sehat</div>
+      <div class="footer-line">AUTO SCAN OVERSOLD REBOUND KETAT | hanya RSI ≤ 35 | prioritaskan oversold valid, bukan overbought</div>
     </div>
     </body>
     </html>
@@ -590,9 +638,9 @@ def show_detail_chart(df: pd.DataFrame, symbol_name: str):
 # =========================================================
 # HEADER
 # =========================================================
-st.title("AUTO SCAN OVERSOLD REBOUND")
+st.title("AUTO SCAN OVERSOLD REBOUND KETAT")
 st.markdown(
-    '<div class="small-note">scan otomatis saham IDX untuk mencari saham oversold yang mulai memantul naik</div>',
+    '<div class="small-note">hanya menampilkan saham oversold yang mulai naik | harga ≤ 1000 | prioritaskan oversold valid dibanding saham yang sudah panas</div>',
     unsafe_allow_html=True
 )
 
@@ -607,7 +655,10 @@ with st.sidebar:
 
     period = st.selectbox("Periode", ["3mo", "6mo", "1y"], index=1)
     interval = st.selectbox("Interval", ["1d", "1wk"], index=0)
-    max_price = st.number_input("Harga maksimal", min_value=50, max_value=20000, value=MAX_PRICE, step=50)
+
+    max_price = 1000
+    st.info("Filter aktif: hanya saham dengan harga ≤ 1000")
+    st.info("Filter aktif: hanya saham oversold dengan RSI ≤ 35")
 
     auto_refresh = st.checkbox("Auto Refresh", value=False)
     refresh_sec = st.selectbox("Refresh tiap", [60, 120, 300, 600], index=1)
@@ -625,7 +676,7 @@ if run_btn or "scanner_df" not in st.session_state:
 scanner_df = st.session_state.get("scanner_df", pd.DataFrame())
 
 if scanner_df.empty:
-    st.error("Belum ada saham yang lolos kriteria oversold rebound.")
+    st.error("Belum ada saham oversold yang mulai naik dan lolos kriteria ketat.")
     st.stop()
 
 display_df = scanner_df.head(TOP_N).reset_index(drop=True)
@@ -647,7 +698,7 @@ st.subheader("Top Oversold Rebound")
 components.html(
     make_html_table(
         display_df,
-        "AUTO SCAN OVERSOLD REBOUND",
+        "AUTO SCAN OVERSOLD REBOUND KETAT",
         f"Update: {last_run} | Universe: {preset}"
     ),
     height=560,
